@@ -1,0 +1,70 @@
+#include <windows.h>
+#include "resource.h"
+
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
+
+IDR_SHIBA RCDATA "Sources/DesktopPet/Resources/shiba.png"
+IDR_SHIBA_BLINK RCDATA "Sources/DesktopPet/Resources/shiba-blink-v2.png"
+IDR_SHIBA_WALK_1 RCDATA "Sources/DesktopPet/Resources/shiba-walk-1-v2.png"
+IDR_SHIBA_WALK_2 RCDATA "Sources/DesktopPet/Resources/shiba-walk-2-v2.png"
+IDR_SHIBA_WALK_3 RCDATA "Sources/DesktopPet/Resources/shiba-walk-3-v2.png"
+IDR_SHIBA_WALK_4 RCDATA "Sources/DesktopPet/Resources/shiba-walk-4-v2.png"
+IDI_APP_ICON ICON "windows/shiba-icon.ico"
+1 RT_MANIFEST "windows/app.manifest"
+
+IDD_DEEPSEEK_SETTINGS DIALOGEX 0, 0, 284, 126
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "DeepSeek 设置"
+FONT 9, "Microsoft YaHei UI"
+BEGIN
+    LTEXT           "API Key（安全保存到 Windows 凭据管理器）", -1, 10, 10, 264, 12
+    EDITTEXT        IDC_API_KEY, 10, 25, 264, 16, ES_PASSWORD | ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT           "模型", -1, 10, 51, 50, 12
+    COMBOBOX        IDC_MODEL, 10, 65, 264, 70, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "清除密钥", IDC_CLEAR_KEY, 10, 101, 58, 15
+    DEFPUSHBUTTON   "保存", IDOK, 176, 101, 46, 15
+    PUSHBUTTON      "取消", IDCANCEL, 228, 101, 46, 15
+END
+
+IDD_DEEPSEEK_CHAT DIALOGEX 0, 0, 304, 80
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "和桌面小柴聊聊"
+FONT 9, "Microsoft YaHei UI"
+BEGIN
+    LTEXT           "输入内容后按回车发送给 DeepSeek：", -1, 10, 10, 284, 12
+    EDITTEXT        IDC_CHAT_INPUT, 10, 26, 284, 17, ES_AUTOHSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "发送", IDOK, 200, 55, 44, 15
+    PUSHBUTTON      "取消", IDCANCEL, 250, 55, 44, 15
+END
+
+1 VERSIONINFO
+ FILEVERSION 0,2,0,0
+ PRODUCTVERSION 0,2,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404B0"
+        BEGIN
+            VALUE "CompanyName", "DesktopPet"
+            VALUE "FileDescription", "桌面小柴 - Windows 桌面宠物"
+            VALUE "FileVersion", "0.2.0"
+            VALUE "InternalName", "DesktopPet"
+            VALUE "OriginalFilename", "DesktopPet-Windows-x64.exe"
+            VALUE "ProductName", "桌面小柴"
+            VALUE "ProductVersion", "0.2.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0804, 1200
+    END
+END

@@ -1,0 +1,41 @@
+# macOS and Finder
+.DS_Store
+
+# Swift Package Manager and local builds
+.build/
+.swiftpm/
+build/
+DerivedData/
+*.dSYM/
+*.app/
+
+# Windows compiler outputs
+*.o
+*.obj
+*.exe
+*.dll
+*.pdb
+
+# Editors and local tooling
+.idea/
+.vscode/
+xcuserdata/
+*.xcuserstate
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+
+# Packaged release archives
+*.zip
