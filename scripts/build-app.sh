@@ -4,6 +4,7 @@ set -euo pipefail
 
 project_dir="${0:A:h:h}"
 configuration="${1:-release}"
+swift_jobs="${DESKTOPPET_SWIFT_JOBS:-1}"
 app_dir="$project_dir/build/DesktopPet.app"
 contents_dir="$app_dir/Contents"
 macos_dir="$contents_dir/MacOS"
@@ -30,9 +31,9 @@ export CLANG_MODULE_CACHE_PATH="$local_cache_dir/clang"
 export SWIFTPM_MODULECACHE_OVERRIDE="$local_cache_dir/swiftpm"
 export XDG_CACHE_HOME="$local_cache_dir/xdg"
 
-swift build -c "$configuration" --disable-sandbox
+swift build -c "$configuration" --disable-sandbox --jobs "$swift_jobs"
 
-binary_dir="$(swift build -c "$configuration" --disable-sandbox --show-bin-path)"
+binary_dir="$(swift build -c "$configuration" --disable-sandbox --jobs "$swift_jobs" --show-bin-path)"
 binary_path="$binary_dir/DesktopPet"
 
 mkdir -p "$macos_dir" "$resources_dir" "$helpers_dir"
@@ -74,8 +75,8 @@ plutil -replace CFBundleIdentifier -string "com.local.desktoppet" "$contents_dir
 plutil -replace CFBundleInfoDictionaryVersion -string "6.0" "$contents_dir/Info.plist"
 plutil -replace CFBundleName -string "DesktopPet" "$contents_dir/Info.plist"
 plutil -replace CFBundlePackageType -string "APPL" "$contents_dir/Info.plist"
-plutil -replace CFBundleShortVersionString -string "0.4.9" "$contents_dir/Info.plist"
-plutil -replace CFBundleVersion -string "13" "$contents_dir/Info.plist"
+plutil -replace CFBundleShortVersionString -string "0.4.10" "$contents_dir/Info.plist"
+plutil -replace CFBundleVersion -string "14" "$contents_dir/Info.plist"
 plutil -replace LSMinimumSystemVersion -string "13.0" "$contents_dir/Info.plist"
 plutil -replace LSUIElement -bool true "$contents_dir/Info.plist"
 plutil -replace NSHighResolutionCapable -bool true "$contents_dir/Info.plist"

@@ -20,7 +20,7 @@
 - 快速连续点击小狗 3 次，输入文字并按回车发送
 - macOS 支持全局快捷键 `⌥⌘0`，在其他应用中也能立即打开 DeepSeek 对话框
 - macOS AI 输入框采用 Alfred 风格的深色极简浮层，支持回车发送和 `Esc` 取消
-- DeepSeek 回复以小狗对话气泡展示，并保留最近 6 轮上下文
+- DeepSeek 回复以小狗对话气泡展示，支持 Markdown 与原生表格渲染，并保留最近 6 轮上下文
 - Apple Silicon + macOS 14 及以上可启用本地 DeepSeek Harness Agent，读取文件、修改项目和运行命令
 - Agent 使用用户选择的独立工作目录；写入和命令可“允许一次”或在当前运行期间“允许所有”，高风险和越界操作始终拒绝
 - “插件与技能”设置直接控制 Harness Cordis 插件，可启用本地 Skill、任务清单、长期目标和 DeepSeek 网页搜索

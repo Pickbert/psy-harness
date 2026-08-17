@@ -8,6 +8,7 @@ final class SpeechBubbleController {
     private let toolProgressIndicator = NSProgressIndicator()
     private let toolStatusLabel = NSTextField(labelWithString: "")
     private var isToolStatusVisible = false
+    private var prefersWideLayout = false
 
     init() {
         panel = NSPanel(
@@ -72,7 +73,12 @@ final class SpeechBubbleController {
     var isVisible: Bool { panel.isVisible }
 
     func show(text: String, anchoredTo anchorWindow: NSWindow, followLatest: Bool = false) {
-        let renderedText = renderMarkdown(text)
+        let segments = MarkdownTableParser.parse(text)
+        prefersWideLayout = segments.contains { segment in
+            if case .table = segment { return true }
+            return false
+        }
+        let renderedText = renderMarkdown(segments)
         textView.textStorage?.setAttributedString(renderedText)
         resize(for: renderedText)
         if let textContainer = textView.textContainer {
@@ -126,11 +132,26 @@ final class SpeechBubbleController {
         panel.orderOut(nil)
         textView.string = ""
         isToolStatusVisible = false
+        prefersWideLayout = false
         toolStatusBar.isHidden = true
         toolProgressIndicator.stopAnimation(nil)
     }
 
-    private func renderMarkdown(_ markdown: String) -> NSAttributedString {
+    func renderMarkdown(_ segments: [MarkdownContentSegment]) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        for (index, segment) in segments.enumerated() {
+            if index > 0 { result.append(NSAttributedString(string: "\n")) }
+            switch segment {
+            case let .text(markdown):
+                result.append(renderTextMarkdown(markdown))
+            case let .table(table):
+                result.append(renderTable(table))
+            }
+        }
+        return result
+    }
+
+    private func renderTextMarkdown(_ markdown: String) -> NSMutableAttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace
         )
@@ -243,8 +264,65 @@ final class SpeechBubbleController {
         return result
     }
 
+    private func renderTable(_ model: MarkdownTableModel) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let table = NSTextTable()
+        table.numberOfColumns = model.headers.count
+        table.layoutAlgorithm = .automaticLayoutAlgorithm
+        table.collapsesBorders = true
+        table.hidesEmptyCells = false
+        table.setContentWidth(100, type: .percentageValueType)
+
+        let rows = [model.headers] + model.rows
+        for (rowIndex, row) in rows.enumerated() {
+            for columnIndex in 0..<model.headers.count {
+                let rawValue = columnIndex < row.count ? row[columnIndex] : ""
+                let cell = renderTextMarkdown(rawValue.isEmpty ? " " : rawValue)
+                let cellRange = NSRange(location: 0, length: cell.length)
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.lineSpacing = 2
+                paragraph.paragraphSpacing = 0
+                switch model.alignments[columnIndex] {
+                case .left: paragraph.alignment = .left
+                case .center: paragraph.alignment = .center
+                case .right: paragraph.alignment = .right
+                }
+
+                let block = NSTextTableBlock(
+                    table: table,
+                    startingRow: rowIndex,
+                    rowSpan: 1,
+                    startingColumn: columnIndex,
+                    columnSpan: 1
+                )
+                block.setWidth(1, type: .absoluteValueType, for: .border)
+                block.setWidth(7, type: .absoluteValueType, for: .padding)
+                block.setBorderColor(NSColor.separatorColor.withAlphaComponent(0.72))
+                block.backgroundColor = rowIndex == 0
+                    ? NSColor.controlAccentColor.withAlphaComponent(0.16)
+                    : (rowIndex.isMultiple(of: 2)
+                        ? NSColor.labelColor.withAlphaComponent(0.055)
+                        : NSColor.clear)
+                paragraph.textBlocks = [block]
+                cell.addAttribute(.paragraphStyle, value: paragraph, range: cellRange)
+                if rowIndex == 0 {
+                    cell.addAttribute(
+                        .font,
+                        value: NSFont.systemFont(ofSize: 14, weight: .semibold),
+                        range: cellRange
+                    )
+                }
+                result.append(cell)
+                let isLastCell = rowIndex == rows.count - 1
+                    && columnIndex == model.headers.count - 1
+                if !isLastCell { result.append(NSAttributedString(string: "\n")) }
+            }
+        }
+        return result
+    }
+
     private func resize(for text: NSAttributedString) {
-        let width: CGFloat = 360
+        let width: CGFloat = prefersWideLayout ? 500 : 360
         let bounds = text.boundingRect(
             with: CGSize(width: width - 42, height: 1_000),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
