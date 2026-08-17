@@ -43,6 +43,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let deepSeekItem = NSMenuItem(title: "设置 DeepSeek API…", action: #selector(configureDeepSeek), keyEquivalent: "")
         deepSeekItem.target = self
         menu.addItem(deepSeekItem)
+        if AgentProcessManager.platformSupported {
+            let agentMenu = NSMenu(title: "本地 Agent")
+            let agentEntries: [(String, Selector)] = [
+                ("选择 Agent 工作目录…", #selector(selectAgentWorkspace)),
+                ("清除 Agent 工作目录", #selector(clearAgentWorkspace)),
+                ("新建对话", #selector(newAgentConversation)),
+                ("停止当前任务", #selector(stopAgentTask)),
+                ("重启 Agent", #selector(restartAgent)),
+                ("查看 Agent 状态", #selector(showAgentStatus))
+            ]
+            for (title, action) in agentEntries {
+                let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
+                entry.target = self
+                agentMenu.addItem(entry)
+            }
+            let agentRoot = NSMenuItem(title: "本地 Agent", action: nil, keyEquivalent: "")
+            agentRoot.submenu = agentMenu
+            menu.addItem(agentRoot)
+        }
         let waitingItem = NSMenuItem(title: "设置等待时间…", action: #selector(configureWaiting), keyEquivalent: "")
         waitingItem.target = self
         menu.addItem(waitingItem)
@@ -196,6 +215,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func configureWaiting() {
         petController?.configureWaiting()
+    }
+
+    @objc private func selectAgentWorkspace() {
+        petController?.selectAgentWorkspace()
+    }
+
+    @objc private func clearAgentWorkspace() {
+        petController?.clearAgentWorkspace()
+    }
+
+    @objc private func newAgentConversation() {
+        petController?.newAgentConversation()
+    }
+
+    @objc private func stopAgentTask() {
+        petController?.stopAgentTask()
+    }
+
+    @objc private func restartAgent() {
+        petController?.restartAgent()
+    }
+
+    @objc private func showAgentStatus() {
+        petController?.showAgentStatus()
     }
 
     @objc private func togglePause() {

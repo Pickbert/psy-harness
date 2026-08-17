@@ -3,6 +3,7 @@ import AppKit
 final class PetController: NSObject {
     private static let waitingTimeoutDefaultsKey = "waitingTimeoutMinutes"
     private static let defaultWaitingTimeoutMinutes = 3
+    private static let agentSessionDefaultsKey = "deepSeekAgentSessionID"
 
     private(set) var isVisible = false
 
@@ -18,6 +19,9 @@ final class PetController: NSObject {
     private let petView: PetView
     private let settingsStore = DeepSeekSettingsStore()
     private let deepSeekClient = DeepSeekClient()
+    private let agentManager = AgentProcessManager()
+    private let agentWorkspaceStore = AgentWorkspaceStore()
+    private let agentPanel = AgentTaskPanelController()
     private let speechBubble = SpeechBubbleController()
     private let chatInput = ChatInputController()
     private var timer: Timer?
@@ -28,6 +32,7 @@ final class PetController: NSObject {
     private var bubbleDismissAt: TimeInterval?
     private var conversationHistory: [DeepSeekMessage] = []
     private var isRequestInFlight = false
+    private var securityScopedWorkspace: URL?
     private var lastInteractionAt = ProcessInfo.processInfo.systemUptime
     private var mood: PetMood = .idle {
         didSet { petView.mood = mood }
@@ -70,6 +75,20 @@ final class PetController: NSObject {
             self?.recordUserInteraction()
         }
 
+        agentManager.onTranscript = { [weak self] text in
+            self?.agentPanel.updateTranscript(text)
+        }
+        agentManager.onActivity = { [weak self] text in
+            self?.agentPanel.showActivity(text)
+        }
+        agentManager.onApproval = { [weak self] request, completion in
+            guard let self else {
+                completion(.rejected)
+                return
+            }
+            self.agentPanel.requestApproval(request, completion: completion)
+        }
+
         resetPosition(animated: false)
         startTimer()
     }
@@ -102,20 +121,23 @@ final class PetController: NSObject {
         timer?.invalidate()
         timer = nil
         speechBubble.hide()
+        agentManager.shutdown()
+        releaseSecurityScopedWorkspace()
     }
 
     @objc func configureDeepSeek() {
         recordUserInteraction()
         NSApp.activate(ignoringOtherApps: true)
+        let hasAPIKey = settingsStore.apiKey() != nil
         let alert = NSAlert()
         alert.messageText = "DeepSeek 设置"
-        alert.informativeText = settingsStore.apiKey() == nil
-            ? "API Key 将安全保存在 macOS 钥匙串中。"
-            : "API Key 已配置。留空可保持原密钥不变。"
+        alert.informativeText = hasAPIKey
+            ? "API Key 已配置。留空可保持原密钥不变。"
+            : "API Key 将安全保存在 macOS 钥匙串中。"
 
         let accessory = NSView(frame: CGRect(x: 0, y: 0, width: 360, height: 74))
         let keyField = NSSecureTextField(frame: CGRect(x: 0, y: 42, width: 360, height: 24))
-        keyField.placeholderString = settingsStore.apiKey() == nil ? "DeepSeek API Key" : "已安全保存"
+        keyField.placeholderString = hasAPIKey ? "已安全保存" : "DeepSeek API Key"
         let modelPopup = NSPopUpButton(frame: CGRect(x: 0, y: 4, width: 360, height: 28))
         DeepSeekModel.allCases.forEach { modelPopup.addItem(withTitle: $0.displayName) }
         modelPopup.selectItem(at: DeepSeekModel.allCases.firstIndex(of: settingsStore.selectedModel) ?? 0)
@@ -124,7 +146,7 @@ final class PetController: NSObject {
         alert.accessoryView = accessory
         alert.addButton(withTitle: "保存")
         alert.addButton(withTitle: "取消")
-        if settingsStore.apiKey() != nil {
+        if hasAPIKey {
             alert.addButton(withTitle: "清除密钥")
         }
         alert.window.initialFirstResponder = keyField
@@ -134,6 +156,8 @@ final class PetController: NSObject {
             do {
                 try settingsStore.clearAPIKey()
                 conversationHistory.removeAll()
+                agentManager.shutdown()
+                resetAgentSession()
                 showSpeech("DeepSeek 密钥已清除。", duration: 4)
             } catch {
                 showError(error)
@@ -148,6 +172,8 @@ final class PetController: NSObject {
                 try settingsStore.saveAPIKey(key)
             }
             settingsStore.selectedModel = DeepSeekModel.allCases[modelPopup.indexOfSelectedItem]
+            agentManager.shutdown()
+            resetAgentSession()
             if settingsStore.apiKey() == nil {
                 showSpeech("还没有填写 API Key 哦。", duration: 5)
             } else {
@@ -170,8 +196,75 @@ final class PetController: NSObject {
             return startDeepSeekChat()
         }
 
-        guard let question = chatInput.prompt(on: window.screen) else { return }
-        sendToDeepSeek(question)
+        if AgentProcessManager.platformSupported {
+            guard let workspace = agentWorkspaceStore.workspaceURL() ?? chooseAgentWorkspace() else { return }
+            guard let question = chatInput.prompt(on: window.screen) else { return }
+            sendToAgent(question, workspace: workspace)
+        } else {
+            guard let question = chatInput.prompt(on: window.screen) else { return }
+            sendToDeepSeek(question)
+        }
+    }
+
+    @objc func selectAgentWorkspace() {
+        recordUserInteraction()
+        guard AgentProcessManager.platformSupported else {
+            showSpeech("当前系统不启用本地 Agent，将继续使用普通 DeepSeek 对话。", duration: 8)
+            return
+        }
+        _ = chooseAgentWorkspace()
+    }
+
+    @objc func clearAgentWorkspace() {
+        recordUserInteraction()
+        agentManager.shutdown()
+        releaseSecurityScopedWorkspace()
+        agentWorkspaceStore.clear()
+        resetAgentSession()
+        showSpeech("Agent 工作目录已清除，下次使用时会重新选择。", duration: 7)
+    }
+
+    @objc func newAgentConversation() {
+        recordUserInteraction()
+        resetAgentSession()
+        showSpeech("新的 Agent 对话已经准备好啦。", duration: 5)
+    }
+
+    @objc func stopAgentTask() {
+        recordUserInteraction()
+        agentManager.stopCurrentTask()
+        isRequestInFlight = false
+        agentPanel.showActivity("任务已停止；下次提问会重新启动 Agent")
+        showSpeech("已经停下来了，汪。", duration: 5)
+    }
+
+    @objc func restartAgent() {
+        recordUserInteraction()
+        guard AgentProcessManager.platformSupported,
+              let workspace = agentWorkspaceStore.workspaceURL(),
+              let apiKey = settingsStore.apiKey()
+        else {
+            showSpeech("请先配置 API Key 并选择 Agent 工作目录。", duration: 7)
+            return
+        }
+        activateSecurityScopedWorkspace(workspace)
+        agentPanel.show(workspace: workspace)
+        agentPanel.showActivity("正在重启 Agent…")
+        agentManager.stopCurrentTask()
+        agentManager.start(workspace: workspace, apiKey: apiKey, model: settingsStore.selectedModel) { [weak self] result in
+            switch result {
+            case .success:
+                self?.agentPanel.showActivity("Agent 已重新启动")
+            case let .failure(error):
+                self?.agentPanel.showError(error.localizedDescription)
+            }
+        }
+    }
+
+    @objc func showAgentStatus() {
+        recordUserInteraction()
+        let workspace = agentWorkspaceStore.workspaceURL()?.path ?? "未选择工作目录"
+        showSpeech("\(agentManager.statusText)\n工作目录：\(workspace)", duration: 12)
     }
 
     @objc func configureWaiting() {
@@ -347,6 +440,9 @@ final class PetController: NSObject {
         let settingsItem = NSMenuItem(title: "设置 DeepSeek API…", action: #selector(configureDeepSeek), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
+        if AgentProcessManager.platformSupported {
+            menu.addItem(agentMenuItem())
+        }
         let waitingItem = NSMenuItem(title: "设置等待时间…", action: #selector(configureWaiting), keyEquivalent: "")
         waitingItem.target = self
         menu.addItem(waitingItem)
@@ -394,6 +490,128 @@ final class PetController: NSObject {
                 }
             }
         }
+    }
+
+    private func sendToAgent(_ question: String, workspace: URL) {
+        guard let apiKey = settingsStore.apiKey() else { return }
+        activateSecurityScopedWorkspace(workspace)
+        isRequestInFlight = true
+        agentPanel.show(workspace: workspace)
+        showSpeech("小柴 Agent 开始工作啦…", duration: 5)
+        agentManager.start(workspace: workspace, apiKey: apiKey, model: settingsStore.selectedModel) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                self.agentManager.sendPrompt(question, sessionID: self.agentSessionID) { [weak self] promptResult in
+                    guard let self else { return }
+                    self.isRequestInFlight = false
+                    switch promptResult {
+                    case let .success(answer):
+                        self.agentPanel.finish(answer)
+                        self.showSpeech(answer, duration: 30)
+                        self.petView.showAffection()
+                    case let .failure(error):
+                        self.agentPanel.showError(error.localizedDescription)
+                        if case AgentRuntimeError.taskStopped = error {
+                            self.agentPanel.showActivity("任务已停止，Agent 已重置")
+                        } else {
+                            self.offerDirectChatFallback(question: question, error: error)
+                        }
+                    }
+                }
+            case let .failure(error):
+                self.isRequestInFlight = false
+                self.agentPanel.showError(error.localizedDescription)
+                self.offerDirectChatFallback(question: question, error: error)
+            }
+        }
+    }
+
+    private func offerDirectChatFallback(question: String, error: Error) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "本地 Agent 无法使用"
+        alert.informativeText = "\(error.localizedDescription)\n\n要改用普通 DeepSeek 对话回答这条问题吗？"
+        alert.addButton(withTitle: "使用普通对话")
+        alert.addButton(withTitle: "取消")
+        if alert.runModal() == .alertFirstButtonReturn {
+            sendToDeepSeek(question)
+        } else {
+            showError(error)
+        }
+    }
+
+    private func chooseAgentWorkspace() -> URL? {
+        NSApp.activate(ignoringOtherApps: true)
+        let picker = NSOpenPanel()
+        picker.title = "选择桌面小柴 Agent 工作目录"
+        picker.message = "Agent 只能读取和操作这个目录；写入和命令仍会逐次请求确认。"
+        picker.prompt = "选择目录"
+        picker.canChooseDirectories = true
+        picker.canChooseFiles = false
+        picker.allowsMultipleSelection = false
+        picker.canCreateDirectories = true
+        guard picker.runModal() == .OK, let url = picker.url else { return nil }
+        do {
+            try agentWorkspaceStore.save(url)
+            agentManager.shutdown()
+            releaseSecurityScopedWorkspace()
+            activateSecurityScopedWorkspace(url)
+            resetAgentSession()
+            showSpeech("Agent 工作目录已设为：\(url.lastPathComponent)", duration: 7)
+            return url
+        } catch {
+            showError(error)
+            return nil
+        }
+    }
+
+    private func activateSecurityScopedWorkspace(_ workspace: URL) {
+        if securityScopedWorkspace?.standardizedFileURL == workspace.standardizedFileURL { return }
+        releaseSecurityScopedWorkspace()
+        if workspace.startAccessingSecurityScopedResource() {
+            securityScopedWorkspace = workspace
+        }
+    }
+
+    private func releaseSecurityScopedWorkspace() {
+        securityScopedWorkspace?.stopAccessingSecurityScopedResource()
+        securityScopedWorkspace = nil
+    }
+
+    private var agentSessionID: String {
+        if let existing = UserDefaults.standard.string(forKey: Self.agentSessionDefaultsKey), !existing.isEmpty {
+            return existing
+        }
+        let created = "desktop-pet-\(UUID().uuidString.lowercased())"
+        UserDefaults.standard.set(created, forKey: Self.agentSessionDefaultsKey)
+        return created
+    }
+
+    private func resetAgentSession() {
+        UserDefaults.standard.removeObject(forKey: Self.agentSessionDefaultsKey)
+        _ = agentSessionID
+    }
+
+    private func agentMenuItem() -> NSMenuItem {
+        let submenu = NSMenu(title: "本地 Agent")
+        let entries: [(String, Selector)] = [
+            ("选择 Agent 工作目录…", #selector(selectAgentWorkspace)),
+            ("清除 Agent 工作目录", #selector(clearAgentWorkspace)),
+            ("新建对话", #selector(newAgentConversation)),
+            ("停止当前任务", #selector(stopAgentTask)),
+            ("重启 Agent", #selector(restartAgent)),
+            ("查看 Agent 状态", #selector(showAgentStatus))
+        ]
+        for (title, action) in entries {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            submenu.addItem(item)
+        }
+        let root = NSMenuItem(title: "本地 Agent", action: nil, keyEquivalent: "")
+        root.submenu = submenu
+        return root
     }
 
     private func showSpeech(_ text: String, duration: TimeInterval?) {

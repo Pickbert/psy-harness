@@ -3,6 +3,7 @@
 
 # Swift Package Manager and local builds
 .build/
+.pnpm-store/
 .swiftpm/
 build/
 DerivedData/
@@ -36,6 +37,11 @@ xcuserdata/
 *.p12
 *.pfx
 *.mobileprovision
+
+# Locally built DeepSeek Harness runtime
+.build/agent-runtime/
+ThirdParty/deepseek-harness/node_modules/
+ThirdParty/deepseek-harness/dist-exe/
 
 # Packaged release archives
 *.zip

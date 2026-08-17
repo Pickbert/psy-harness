@@ -22,6 +22,9 @@ final class DeepSeekSettingsStore {
     private let service = "com.local.desktoppet.deepseek"
     private let account = "api-key"
     private let modelDefaultsKey = "deepSeekModel"
+    private let cacheLock = NSLock()
+    private var hasLoadedAPIKey = false
+    private var cachedAPIKey: String?
 
     var selectedModel: DeepSeekModel {
         get {
@@ -37,6 +40,14 @@ final class DeepSeekSettingsStore {
     }
 
     func apiKey() -> String? {
+        cacheLock.lock()
+        let hasLoadedAPIKey = self.hasLoadedAPIKey
+        let cachedAPIKey = self.cachedAPIKey
+        cacheLock.unlock()
+        if hasLoadedAPIKey {
+            return cachedAPIKey
+        }
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -45,12 +56,19 @@ final class DeepSeekSettingsStore {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard
-            SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+            status == errSecSuccess,
             let data = result as? Data,
             let key = String(data: data, encoding: .utf8),
             !key.isEmpty
-        else { return nil }
+        else {
+            if status == errSecItemNotFound {
+                updateAPIKeyCache(nil)
+            }
+            return nil
+        }
+        updateAPIKeyCache(key)
         return key
     }
 
@@ -77,6 +95,7 @@ final class DeepSeekSettingsStore {
         } else if updateStatus != errSecSuccess {
             throw DeepSeekError.secureStorage(updateStatus)
         }
+        updateAPIKeyCache(key)
     }
 
     func clearAPIKey() throws {
@@ -89,6 +108,14 @@ final class DeepSeekSettingsStore {
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw DeepSeekError.secureStorage(status)
         }
+        updateAPIKeyCache(nil)
+    }
+
+    private func updateAPIKeyCache(_ key: String?) {
+        cacheLock.lock()
+        cachedAPIKey = key
+        hasLoadedAPIKey = true
+        cacheLock.unlock()
     }
 }
 
