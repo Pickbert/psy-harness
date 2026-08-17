@@ -25,6 +25,14 @@ enum AgentApprovalDecision: String {
     case rejected
 }
 
+enum AgentToolExecutionState: Equatable {
+    case idle
+    case waitingForApproval(toolName: String)
+    case running(toolName: String)
+    case succeeded(toolName: String)
+    case failed(toolName: String)
+}
+
 enum AgentRuntimeError: LocalizedError {
     case unsupportedPlatform
     case runtimeMissing
@@ -68,6 +76,7 @@ final class AgentProcessManager {
 
     var onTranscript: ((String) -> Void)?
     var onActivity: ((String) -> Void)?
+    var onToolExecutionState: ((AgentToolExecutionState) -> Void)?
     var onApproval: ApprovalHandler?
 
     private struct LaunchConfiguration {
@@ -88,6 +97,7 @@ final class AgentProcessManager {
     }
     private var pendingResponses: [String: PendingResponse] = [:]
     private var toolCalls: [String: (name: String, arguments: String)] = [:]
+    private var activeToolCallID: String?
     private var launchConfiguration: LaunchConfiguration?
     private var ready = false
     private var stopping = false
@@ -170,6 +180,8 @@ final class AgentProcessManager {
             self.finalText = ""
             self.lastTurnError = nil
             self.lastTurnFailureKind = nil
+            self.activeToolCallID = nil
+            self.emitToolExecutionState(.idle)
             self.sendRequestLocked(
                 method: "session/prompt",
                 params: [
@@ -389,19 +401,30 @@ final class AgentProcessManager {
         )
         if Self.isDangerous(request, workspace: launchConfiguration?.workspace) {
             emitActivity("已自动拒绝高风险操作：\(request.toolName)")
+            emitToolExecutionState(.failed(toolName: request.toolName))
+            if activeToolCallID == callID { activeToolCallID = nil }
             writeFrameLocked(["jsonrpc": "2.0", "id": id, "result": ["outcome": AgentApprovalDecision.rejected.rawValue]])
             return
         }
         guard let onApproval else {
+            emitToolExecutionState(.failed(toolName: request.toolName))
+            if activeToolCallID == callID { activeToolCallID = nil }
             writeFrameLocked(["jsonrpc": "2.0", "id": id, "result": ["outcome": AgentApprovalDecision.rejected.rawValue]])
             return
         }
+        emitToolExecutionState(.waitingForApproval(toolName: request.toolName))
         DispatchQueue.main.async {
             var answered = false
             onApproval(request) { decision in
                 guard !answered else { return }
                 answered = true
                 self.queue.async {
+                    if decision == .allowedOnce {
+                        self.emitToolExecutionState(.running(toolName: request.toolName))
+                    } else {
+                        self.emitToolExecutionState(.failed(toolName: request.toolName))
+                        if self.activeToolCallID == callID { self.activeToolCallID = nil }
+                    }
                     self.writeFrameLocked(["jsonrpc": "2.0", "id": id, "result": ["outcome": decision.rawValue]])
                 }
             }
@@ -479,15 +502,24 @@ final class AgentProcessManager {
             let name = data["name"] as? String ?? "工具"
             let arguments = data["arguments"] as? String ?? ""
             toolCalls[callID] = (name, arguments)
-            emitActivity("准备调用 \(name)：\(Self.compact(arguments))")
+            activeToolCallID = callID
+            emitToolExecutionState(.running(toolName: name))
         case "tool/result":
+            let callID = data["callId"] as? String ?? activeToolCallID ?? ""
+            let name = toolCalls[callID]?.name ?? "工具"
             let isError = (data["error"] as? [String: Any]) != nil
-            emitActivity(isError ? "工具执行失败" : "工具执行完成")
+            emitToolExecutionState(isError ? .failed(toolName: name) : .succeeded(toolName: name))
+            toolCalls.removeValue(forKey: callID)
+            if activeToolCallID == callID { activeToolCallID = nil }
         case "turn/end":
             if let reason = data["reason"] as? [String: Any] {
                 let kind = reason["kind"] as? String
                 lastTurnFailureKind = kind == "completed" ? nil : kind
                 lastTurnError = Self.turnFailureMessage(reason)
+            }
+            if activeToolCallID != nil {
+                activeToolCallID = nil
+                emitToolExecutionState(.idle)
             }
         default:
             break
@@ -528,6 +560,8 @@ final class AgentProcessManager {
         process = nil
         outputFramer.reset()
         toolCalls.removeAll()
+        activeToolCallID = nil
+        emitToolExecutionState(.idle)
     }
 
     private func failPendingLocked(_ error: Error) {
@@ -553,6 +587,10 @@ final class AgentProcessManager {
 
     private func emitActivity(_ text: String) {
         DispatchQueue.main.async { self.onActivity?(text) }
+    }
+
+    private func emitToolExecutionState(_ state: AgentToolExecutionState) {
+        DispatchQueue.main.async { self.onToolExecutionState?(state) }
     }
 
     private func completeOnMain<T>(_ completion: @escaping (Result<T, Error>) -> Void, with result: Result<T, Error>) {
@@ -583,11 +621,6 @@ final class AgentProcessManager {
         let url = base.appendingPathComponent("DesktopPet/Agent/Sessions", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
-    }
-
-    private static func compact(_ text: String) -> String {
-        let singleLine = text.replacingOccurrences(of: "\n", with: " ")
-        return singleLine.count > 180 ? String(singleLine.prefix(180)) + "…" : singleLine
     }
 
     static func isDangerous(_ request: AgentApprovalRequest, workspace: URL? = nil) -> Bool {

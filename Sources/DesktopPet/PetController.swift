@@ -33,6 +33,7 @@ final class PetController: NSObject {
     private var conversationHistory: [DeepSeekMessage] = []
     private var isRequestInFlight = false
     private var isAwaitingAgentApproval = false
+    private var toolStatusGeneration = 0
     private var securityScopedWorkspace: URL?
     private var lastInteractionAt = ProcessInfo.processInfo.systemUptime
     private var mood: PetMood = .idle {
@@ -81,6 +82,9 @@ final class PetController: NSObject {
         }
         agentManager.onActivity = { [weak self] text in
             self?.showSpeech(text, duration: 6)
+        }
+        agentManager.onToolExecutionState = { [weak self] state in
+            self?.updateToolExecutionState(state)
         }
         agentManager.onApproval = { [weak self] request, completion in
             guard let self else {
@@ -627,6 +631,42 @@ final class PetController: NSObject {
         let warning = "⚠️ \(source) 已达到本轮最大输出 Token，以上内容可能不完整。请在 DeepSeek 设置中提高上限，或让我分段完成。"
         let text = partial.trimmingCharacters(in: .whitespacesAndNewlines)
         showSpeech(text.isEmpty ? warning : "\(text)\n\n---\n\(warning)", duration: nil)
+    }
+
+    private func updateToolExecutionState(_ state: AgentToolExecutionState) {
+        toolStatusGeneration += 1
+        let generation = toolStatusGeneration
+
+        switch state {
+        case .idle:
+            speechBubble.setToolStatus(nil, isRunning: false, anchoredTo: window)
+        case let .waitingForApproval(toolName):
+            bubbleDismissAt = nil
+            speechBubble.setToolStatus(
+                "等待确认：\(toolName)",
+                isRunning: false,
+                anchoredTo: window
+            )
+        case let .running(toolName):
+            bubbleDismissAt = nil
+            speechBubble.setToolStatus(
+                "正在执行：\(toolName)",
+                isRunning: true,
+                anchoredTo: window
+            )
+        case let .succeeded(toolName):
+            showTransientToolStatus("✓ 已完成：\(toolName)", generation: generation)
+        case let .failed(toolName):
+            showTransientToolStatus("✕ 执行失败：\(toolName)", generation: generation)
+        }
+    }
+
+    private func showTransientToolStatus(_ text: String, generation: Int) {
+        speechBubble.setToolStatus(text, isRunning: false, anchoredTo: window)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            guard let self, self.toolStatusGeneration == generation else { return }
+            self.speechBubble.setToolStatus(nil, isRunning: false, anchoredTo: self.window)
+        }
     }
 
     private func chooseAgentWorkspace() -> URL? {

@@ -4,6 +4,10 @@ final class SpeechBubbleController {
     private let panel: NSPanel
     private let textView: NSTextView
     private let scrollView: NSScrollView
+    private let toolStatusBar = NSView()
+    private let toolProgressIndicator = NSProgressIndicator()
+    private let toolStatusLabel = NSTextField(labelWithString: "")
+    private var isToolStatusVisible = false
 
     init() {
         panel = NSPanel(
@@ -47,8 +51,22 @@ final class SpeechBubbleController {
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
         scrollView.documentView = textView
+
+        toolStatusBar.isHidden = true
+        toolProgressIndicator.style = .spinning
+        toolProgressIndicator.controlSize = .small
+        toolProgressIndicator.isDisplayedWhenStopped = false
+        toolProgressIndicator.frame = CGRect(x: 0, y: 2, width: 16, height: 16)
+        toolStatusLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        toolStatusLabel.textColor = .secondaryLabelColor
+        toolStatusLabel.lineBreakMode = .byTruncatingTail
+        toolStatusBar.addSubview(toolProgressIndicator)
+        toolStatusBar.addSubview(toolStatusLabel)
+
         container.addSubview(scrollView)
+        container.addSubview(toolStatusBar)
         panel.contentView = container
+        layoutContent()
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -69,8 +87,30 @@ final class SpeechBubbleController {
         panel.orderFrontRegardless()
     }
 
+    func setToolStatus(
+        _ text: String?,
+        isRunning: Bool,
+        anchoredTo anchorWindow: NSWindow
+    ) {
+        let normalized = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        isToolStatusVisible = !normalized.isEmpty
+        toolStatusBar.isHidden = !isToolStatusVisible
+        toolStatusLabel.stringValue = normalized
+        toolProgressIndicator.isHidden = !isRunning
+        if isRunning {
+            toolProgressIndicator.startAnimation(nil)
+        } else {
+            toolProgressIndicator.stopAnimation(nil)
+        }
+        let currentText = textView.textStorage.map(NSAttributedString.init(attributedString:))
+            ?? NSAttributedString(string: textView.string)
+        resize(for: currentText)
+        reposition(anchoredTo: anchorWindow)
+        if isToolStatusVisible { panel.orderFrontRegardless() }
+    }
+
     func reposition(anchoredTo anchorWindow: NSWindow) {
-        guard panel.isVisible || !textView.string.isEmpty else { return }
+        guard panel.isVisible || !textView.string.isEmpty || isToolStatusVisible else { return }
         let anchor = anchorWindow.frame
         let screenFrame = (anchorWindow.screen ?? NSScreen.main)?.visibleFrame ?? anchor
         var x = anchor.midX - panel.frame.width / 2
@@ -85,6 +125,9 @@ final class SpeechBubbleController {
     func hide() {
         panel.orderOut(nil)
         textView.string = ""
+        isToolStatusVisible = false
+        toolStatusBar.isHidden = true
+        toolProgressIndicator.stopAnimation(nil)
     }
 
     private func renderMarkdown(_ markdown: String) -> NSAttributedString {
@@ -207,7 +250,38 @@ final class SpeechBubbleController {
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             context: nil
         )
-        let height = min(max(82, ceil(bounds.height) + 38), 240)
+        let textHeight = min(max(82, ceil(bounds.height) + 38), 240)
+        let height = textHeight + (isToolStatusVisible ? 30 : 0)
         panel.setContentSize(CGSize(width: width, height: height))
+        layoutContent()
+    }
+
+    private func layoutContent() {
+        guard let content = panel.contentView else { return }
+        let bounds = content.bounds
+        let horizontalInset: CGFloat = 14
+        let verticalInset: CGFloat = 12
+        let statusHeight: CGFloat = isToolStatusVisible ? 22 : 0
+        let statusSpacing: CGFloat = isToolStatusVisible ? 6 : 0
+
+        toolStatusBar.frame = CGRect(
+            x: horizontalInset,
+            y: bounds.height - verticalInset - statusHeight,
+            width: max(0, bounds.width - horizontalInset * 2),
+            height: statusHeight
+        )
+        let labelX: CGFloat = toolProgressIndicator.isHidden ? 0 : 22
+        toolStatusLabel.frame = CGRect(
+            x: labelX,
+            y: 1,
+            width: max(0, toolStatusBar.bounds.width - labelX),
+            height: 20
+        )
+        scrollView.frame = CGRect(
+            x: horizontalInset,
+            y: verticalInset,
+            width: max(0, bounds.width - horizontalInset * 2),
+            height: max(0, bounds.height - verticalInset * 2 - statusHeight - statusSpacing)
+        )
     }
 }
