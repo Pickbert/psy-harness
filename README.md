@@ -22,7 +22,7 @@
 - macOS AI 输入框采用 Alfred 风格的深色极简浮层，支持回车发送和 `Esc` 取消
 - DeepSeek 回复以小狗对话气泡展示，并保留最近 6 轮上下文
 - Apple Silicon + macOS 14 及以上可启用本地 DeepSeek Harness Agent，读取文件、修改项目和运行命令
-- Agent 使用用户选择的独立工作目录；写入和命令必须逐次点击“允许一次”，高风险和越界操作直接拒绝
+- Agent 使用用户选择的独立工作目录；写入和命令可“允许一次”或在当前运行期间“允许所有”，高风险和越界操作始终拒绝
 - “插件与技能”设置直接控制 Harness Cordis 插件，可启用本地 Skill、任务清单、长期目标和 DeepSeek 网页搜索
 - 记忆上次选择的小狗尺寸
 - 普通宠物功能不需要网络；AI 对话需要用户自己的 DeepSeek API Key
@@ -96,7 +96,7 @@ Agent 调用工具时，跟随小狗的气泡顶部会显示无确定进度的�
 
 本地技能位于所选工作目录的 `.desktop-pet/skills`，支持 `<name>/SKILL.md` 和平铺 Markdown。该目录仍位于 `workspace-write` 沙箱内，App 不会扫描 `~/.agents`、`~/.dsh` 或其他用户级技能目录。外部 npm/GitHub 插件不会在运行时下载执行；需要固定版本、审计并重新构建 sidecar。
 
-安全策略为 `workspace-write + ask`：读取所选目录可自动进行，写入和命令会显示审批卡，只能“允许一次”或“拒绝”；删除、提权、明显破坏性命令和结构化越界路径会直接拒绝。停止任务会终止并重新启动 sidecar，未完成审批按拒绝处理。
+安全策略为 `workspace-write + ask`：读取所选目录可自动进行，写入和命令会显示审批卡，可选择“允许一次”“允许所有”或“拒绝”。“允许所有”只对当前 sidecar 运行期间的后续安全操作生效，切换工作目录、重启 Agent 或退出 App 后自动恢复逐次确认；删除、提权、凭据访问、明显破坏性命令和结构化越界路径仍会直接拒绝。停止任务会终止并重新启动 sidecar，未完成审批按拒绝处理。
 
 Harness 源码固定在提交 `47f943859bef60e4160492346772ded9b24f765a`，位于 `ThirdParty/deepseek-harness`。构建 Apple Silicon 单文件运行时：
 

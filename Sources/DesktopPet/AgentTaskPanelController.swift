@@ -10,6 +10,7 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
     private let approvalTitleLabel = NSTextField(labelWithString: "需要你的确认")
     private let approvalLabel = NSTextField(wrappingLabelWithString: "")
     private let approveButton = NSButton(title: "允许一次", target: nil, action: nil)
+    private let approveAllButton = NSButton(title: "允许所有", target: nil, action: nil)
     private let rejectButton = NSButton(title: "拒绝", target: nil, action: nil)
     private var scrollBottomToPanel: NSLayoutConstraint?
     private var scrollBottomToApproval: NSLayoutConstraint?
@@ -69,7 +70,7 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
             self?.hideApproval(answer: .rejected)
             self?.statusLabel.stringValue = "审批已超时，操作已拒绝"
         }
-        approvalTitleLabel.stringValue = "允许「\(request.toolName)」执行一次？"
+        approvalTitleLabel.stringValue = "允许「\(request.toolName)」执行？"
         let details = [request.summary, request.reason, request.arguments]
             .compactMap { value -> String? in
                 guard let value, !value.isEmpty else { return nil }
@@ -112,6 +113,11 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
     @objc private func approve() {
         hideApproval(answer: .allowedOnce)
         statusLabel.stringValue = "操作已允许，继续执行…"
+    }
+
+    @objc private func approveAll() {
+        hideApproval(answer: .allowedAll)
+        statusLabel.stringValue = "已允许当前 Agent 后续安全操作"
     }
 
     @objc private func reject() {
@@ -209,11 +215,18 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
         approvalLabel.maximumNumberOfLines = 3
         approvalLabel.lineBreakMode = .byTruncatingTail
         approveButton.translatesAutoresizingMaskIntoConstraints = false
+        approveAllButton.translatesAutoresizingMaskIntoConstraints = false
         rejectButton.translatesAutoresizingMaskIntoConstraints = false
         configureApprovalButton(approveButton, emphasized: true)
+        configureApprovalButton(approveAllButton, emphasized: false)
+        approveAllButton.layer?.backgroundColor = NSColor.systemOrange.withAlphaComponent(0.72).cgColor
         configureApprovalButton(rejectButton, emphasized: false)
         approveButton.target = self
         approveButton.action = #selector(approve)
+        approveButton.keyEquivalent = "\r"
+        approveAllButton.target = self
+        approveAllButton.action = #selector(approveAll)
+        approveAllButton.toolTip = "自动允许当前 Agent 运行期间的后续安全操作；重启 Agent 后恢复逐次确认。"
         rejectButton.target = self
         rejectButton.action = #selector(reject)
 
@@ -227,6 +240,7 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
         approvalCard.addSubview(approvalTitleLabel)
         approvalCard.addSubview(approvalLabel)
         approvalCard.addSubview(approveButton)
+        approvalCard.addSubview(approveAllButton)
         approvalCard.addSubview(rejectButton)
 
         scrollBottomToPanel = scrollView.bottomAnchor.constraint(
@@ -275,7 +289,11 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
             approveButton.leadingAnchor.constraint(equalTo: rejectButton.trailingAnchor, constant: 8),
             approveButton.bottomAnchor.constraint(equalTo: rejectButton.bottomAnchor),
             approveButton.widthAnchor.constraint(equalToConstant: 104),
-            approveButton.heightAnchor.constraint(equalTo: rejectButton.heightAnchor)
+            approveButton.heightAnchor.constraint(equalTo: rejectButton.heightAnchor),
+            approveAllButton.leadingAnchor.constraint(equalTo: approveButton.trailingAnchor, constant: 8),
+            approveAllButton.bottomAnchor.constraint(equalTo: rejectButton.bottomAnchor),
+            approveAllButton.widthAnchor.constraint(equalToConstant: 104),
+            approveAllButton.heightAnchor.constraint(equalTo: rejectButton.heightAnchor)
         ])
         hideApproval(answer: nil)
     }

@@ -22,7 +22,24 @@ struct AgentApprovalRequest {
 
 enum AgentApprovalDecision: String {
     case allowedOnce = "allowed-once"
+    case allowedAll = "allowed-all"
     case rejected
+}
+
+struct AgentApprovalScope {
+    private(set) var allowsAllSafeOperations = false
+
+    mutating func resolve(_ decision: AgentApprovalDecision) -> AgentApprovalDecision {
+        if decision == .allowedAll {
+            allowsAllSafeOperations = true
+            return .allowedOnce
+        }
+        return decision
+    }
+
+    mutating func reset() {
+        allowsAllSafeOperations = false
+    }
 }
 
 enum AgentToolExecutionState: Equatable {
@@ -111,6 +128,7 @@ final class AgentProcessManager {
     private var lastTurnError: String?
     private var lastTurnFailureKind: String?
     private var pluginSnapshot: AgentRuntimePluginSnapshot?
+    private var approvalScope = AgentApprovalScope()
 
     var statusText: String {
         queue.sync {
@@ -122,6 +140,14 @@ final class AgentProcessManager {
 
     var runtimePluginSnapshot: AgentRuntimePluginSnapshot? {
         queue.sync { pluginSnapshot }
+    }
+
+    var approvalModeText: String {
+        queue.sync {
+            approvalScope.allowsAllSafeOperations
+                ? "允许当前 Agent 后续安全操作"
+                : "逐次确认"
+        }
     }
 
     func start(
@@ -280,6 +306,7 @@ final class AgentProcessManager {
         config: LaunchConfiguration,
         completion: @escaping (Result<Void, Error>) -> Void
     ) throws {
+        approvalScope.reset()
         guard let runtimeURL = Self.runtimeURL(), FileManager.default.isExecutableFile(atPath: runtimeURL.path) else {
             throw AgentRuntimeError.runtimeMissing
         }
@@ -464,6 +491,16 @@ final class AgentProcessManager {
             writeFrameLocked(["jsonrpc": "2.0", "id": id, "result": ["outcome": AgentApprovalDecision.rejected.rawValue]])
             return
         }
+        if approvalScope.allowsAllSafeOperations {
+            emitActivity("已按“允许所有”自动放行：\(request.toolName)")
+            emitToolExecutionState(.running(toolName: request.toolName))
+            writeFrameLocked([
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": ["outcome": AgentApprovalDecision.allowedOnce.rawValue]
+            ])
+            return
+        }
         guard let onApproval else {
             emitToolExecutionState(.failed(toolName: request.toolName))
             if activeToolCallID == callID { activeToolCallID = nil }
@@ -477,13 +514,21 @@ final class AgentProcessManager {
                 guard !answered else { return }
                 answered = true
                 self.queue.async {
-                    if decision == .allowedOnce {
+                    let wireDecision = self.approvalScope.resolve(decision)
+                    if decision == .allowedAll {
+                        self.emitActivity("已允许当前 Agent 后续所有安全操作；重启后恢复逐次确认")
+                    }
+                    if wireDecision == .allowedOnce {
                         self.emitToolExecutionState(.running(toolName: request.toolName))
                     } else {
                         self.emitToolExecutionState(.failed(toolName: request.toolName))
                         if self.activeToolCallID == callID { self.activeToolCallID = nil }
                     }
-                    self.writeFrameLocked(["jsonrpc": "2.0", "id": id, "result": ["outcome": decision.rawValue]])
+                    self.writeFrameLocked([
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": ["outcome": wireDecision.rawValue]
+                    ])
                 }
             }
         }
@@ -606,6 +651,7 @@ final class AgentProcessManager {
 
     private func stopLocked(notifyActive: Bool) {
         ready = false
+        approvalScope.reset()
         if notifyActive, activeCompletion != nil {
             finishActiveLocked(.failure(AgentRuntimeError.taskStopped))
         }

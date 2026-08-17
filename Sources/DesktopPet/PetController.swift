@@ -332,7 +332,7 @@ final class PetController: NSObject {
             .map(\.title)
             .joined(separator: "、")
         showSpeech(
-            "\(agentManager.statusText)\n工作目录：\(workspace)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n已配置：\(configured.displaySummary)\nHarness 实际启用：\(actual.isEmpty ? "未运行或无可选插件" : actual)",
+            "\(agentManager.statusText)\n工作目录：\(workspace)\n审批模式：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n已配置：\(configured.displaySummary)\nHarness 实际启用：\(actual.isEmpty ? "未运行或无可选插件" : actual)",
             duration: 12
         )
     }

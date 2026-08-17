@@ -87,4 +87,16 @@ final class AgentSafetyTests: XCTestCase {
             workspace: workspace
         ))
     }
+
+    func testAllowAllScopeUsesOnlyWireCompatibleOneShotApprovals() {
+        var scope = AgentApprovalScope()
+
+        XCTAssertFalse(scope.allowsAllSafeOperations)
+        XCTAssertEqual(scope.resolve(.allowedAll), .allowedOnce)
+        XCTAssertTrue(scope.allowsAllSafeOperations)
+        XCTAssertEqual(scope.resolve(.rejected), .rejected)
+
+        scope.reset()
+        XCTAssertFalse(scope.allowsAllSafeOperations)
+    }
 }
