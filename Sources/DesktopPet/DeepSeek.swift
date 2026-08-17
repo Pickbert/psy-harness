@@ -18,10 +18,26 @@ enum DeepSeekModel: String, CaseIterable {
     }
 }
 
+enum DeepSeekOutputLimits {
+    static let maximumSupported = 384_000
+    static let defaultAgent = 256_000
+    static let defaultDirectChat = 8_192
+
+    static func isValid(_ value: Int) -> Bool {
+        (1...maximumSupported).contains(value)
+    }
+
+    static func normalized(_ value: Int, default defaultValue: Int) -> Int {
+        isValid(value) ? value : defaultValue
+    }
+}
+
 final class DeepSeekSettingsStore {
     private let service = "com.local.desktoppet.deepseek"
     private let account = "api-key"
     private let modelDefaultsKey = "deepSeekModel"
+    private let agentMaxOutputTokensDefaultsKey = "deepSeekAgentMaxOutputTokens"
+    private let directChatMaxOutputTokensDefaultsKey = "deepSeekDirectChatMaxOutputTokens"
     private let cacheLock = NSLock()
     private var hasLoadedAPIKey = false
     private var cachedAPIKey: String?
@@ -36,6 +52,36 @@ final class DeepSeekSettingsStore {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: modelDefaultsKey)
+        }
+    }
+
+    var agentMaxOutputTokens: Int {
+        get {
+            storedOutputTokens(
+                forKey: agentMaxOutputTokensDefaultsKey,
+                default: DeepSeekOutputLimits.defaultAgent
+            )
+        }
+        set {
+            UserDefaults.standard.set(
+                DeepSeekOutputLimits.normalized(newValue, default: DeepSeekOutputLimits.defaultAgent),
+                forKey: agentMaxOutputTokensDefaultsKey
+            )
+        }
+    }
+
+    var directChatMaxOutputTokens: Int {
+        get {
+            storedOutputTokens(
+                forKey: directChatMaxOutputTokensDefaultsKey,
+                default: DeepSeekOutputLimits.defaultDirectChat
+            )
+        }
+        set {
+            UserDefaults.standard.set(
+                DeepSeekOutputLimits.normalized(newValue, default: DeepSeekOutputLimits.defaultDirectChat),
+                forKey: directChatMaxOutputTokensDefaultsKey
+            )
         }
     }
 
@@ -117,12 +163,21 @@ final class DeepSeekSettingsStore {
         hasLoadedAPIKey = true
         cacheLock.unlock()
     }
+
+    private func storedOutputTokens(forKey key: String, default defaultValue: Int) -> Int {
+        guard UserDefaults.standard.object(forKey: key) != nil else { return defaultValue }
+        return DeepSeekOutputLimits.normalized(
+            UserDefaults.standard.integer(forKey: key),
+            default: defaultValue
+        )
+    }
 }
 
 enum DeepSeekError: LocalizedError {
     case invalidResponse
     case api(status: Int, message: String)
     case emptyResponse
+    case outputLimitReached(partial: String)
     case secureStorage(OSStatus)
 
     var errorDescription: String? {
@@ -133,6 +188,8 @@ enum DeepSeekError: LocalizedError {
             return "DeepSeek 请求失败（\(status)）：\(message)"
         case .emptyResponse:
             return "DeepSeek 没有返回文字内容。"
+        case .outputLimitReached:
+            return "DeepSeek 已达到本轮最大输出 Token，当前回答可能不完整。"
         case let .secureStorage(status):
             return "无法安全保存 API Key（错误码 \(status)）。"
         }
@@ -171,6 +228,12 @@ final class DeepSeekClient {
     private struct ResponseBody: Decodable {
         struct Choice: Decodable {
             let message: DeepSeekMessage
+            let finishReason: String?
+
+            enum CodingKeys: String, CodingKey {
+                case message
+                case finishReason = "finish_reason"
+            }
         }
         let choices: [Choice]
     }
@@ -184,7 +247,8 @@ final class DeepSeekClient {
         to question: String,
         apiKey: String,
         model: DeepSeekModel,
-        history: [DeepSeekMessage]
+        history: [DeepSeekMessage],
+        maxOutputTokens: Int
     ) async throws -> String {
         guard let url = URL(string: "https://api.deepseek.com/chat/completions") else {
             throw DeepSeekError.invalidResponse
@@ -198,12 +262,15 @@ final class DeepSeekClient {
             model: model.rawValue,
             messages: [system] + history + [DeepSeekMessage(role: "user", content: question)],
             thinking: .init(type: "disabled"),
-            maxTokens: 500,
+            maxTokens: DeepSeekOutputLimits.normalized(
+                maxOutputTokens,
+                default: DeepSeekOutputLimits.defaultDirectChat
+            ),
             temperature: 0.8,
             stream: false
         )
 
-        var request = URLRequest(url: url, timeoutInterval: 75)
+        var request = URLRequest(url: url, timeoutInterval: 180)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -219,11 +286,21 @@ final class DeepSeekClient {
             throw DeepSeekError.api(status: httpResponse.statusCode, message: apiMessage)
         }
 
-        guard
-            let content = try JSONDecoder().decode(ResponseBody.self, from: data).choices.first?.message.content
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-            !content.isEmpty
-        else { throw DeepSeekError.emptyResponse }
+        guard let choice = try JSONDecoder().decode(ResponseBody.self, from: data).choices.first else {
+            throw DeepSeekError.emptyResponse
+        }
+        return try Self.validatedResponseContent(
+            choice.message.content,
+            finishReason: choice.finishReason
+        )
+    }
+
+    static func validatedResponseContent(_ rawContent: String, finishReason: String?) throws -> String {
+        let content = rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        if finishReason == "length" {
+            throw DeepSeekError.outputLimitReached(partial: content)
+        }
+        guard !content.isEmpty else { throw DeepSeekError.emptyResponse }
         return content
     }
 }

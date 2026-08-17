@@ -77,7 +77,7 @@ final class PetController: NSObject {
         }
 
         agentManager.onTranscript = { [weak self] text in
-            self?.showSpeech(text, duration: nil)
+            self?.showSpeech(text, duration: nil, followLatest: true)
         }
         agentManager.onActivity = { [weak self] text in
             self?.showSpeech(text, duration: 6)
@@ -148,17 +148,39 @@ final class PetController: NSObject {
         let alert = NSAlert()
         alert.messageText = "DeepSeek 设置"
         alert.informativeText = hasAPIKey
-            ? "API Key 已配置。留空可保持原密钥不变。"
-            : "API Key 将安全保存在 macOS 钥匙串中。"
+            ? "API Key 已配置。留空可保持原密钥不变；Token 范围为 1–384000。"
+            : "API Key 将安全保存在 macOS 钥匙串中；Token 范围为 1–384000。"
 
-        let accessory = NSView(frame: CGRect(x: 0, y: 0, width: 360, height: 74))
-        let keyField = NSSecureTextField(frame: CGRect(x: 0, y: 42, width: 360, height: 24))
+        let accessory = NSView(frame: CGRect(x: 0, y: 0, width: 420, height: 146))
+        func label(_ title: String, y: CGFloat) -> NSTextField {
+            let field = NSTextField(labelWithString: title)
+            field.frame = CGRect(x: 0, y: y, width: 150, height: 24)
+            field.alignment = .right
+            return field
+        }
+
+        let keyField = NSSecureTextField(frame: CGRect(x: 162, y: 118, width: 258, height: 24))
         keyField.placeholderString = hasAPIKey ? "已安全保存" : "DeepSeek API Key"
-        let modelPopup = NSPopUpButton(frame: CGRect(x: 0, y: 4, width: 360, height: 28))
+        let modelPopup = NSPopUpButton(frame: CGRect(x: 162, y: 82, width: 258, height: 28))
         DeepSeekModel.allCases.forEach { modelPopup.addItem(withTitle: $0.displayName) }
         modelPopup.selectItem(at: DeepSeekModel.allCases.firstIndex(of: settingsStore.selectedModel) ?? 0)
+
+        let agentTokenField = NSTextField(frame: CGRect(x: 162, y: 46, width: 258, height: 24))
+        agentTokenField.stringValue = String(settingsStore.agentMaxOutputTokens)
+        agentTokenField.placeholderString = String(DeepSeekOutputLimits.defaultAgent)
+
+        let directTokenField = NSTextField(frame: CGRect(x: 162, y: 10, width: 258, height: 24))
+        directTokenField.stringValue = String(settingsStore.directChatMaxOutputTokens)
+        directTokenField.placeholderString = String(DeepSeekOutputLimits.defaultDirectChat)
+
+        accessory.addSubview(label("API Key", y: 118))
+        accessory.addSubview(label("模型", y: 84))
+        accessory.addSubview(label("Agent 最大输出 Token", y: 46))
+        accessory.addSubview(label("普通对话最大输出 Token", y: 10))
         accessory.addSubview(keyField)
         accessory.addSubview(modelPopup)
+        accessory.addSubview(agentTokenField)
+        accessory.addSubview(directTokenField)
         alert.accessoryView = accessory
         alert.addButton(withTitle: "保存")
         alert.addButton(withTitle: "取消")
@@ -182,12 +204,25 @@ final class PetController: NSObject {
         }
         guard result == .alertFirstButtonReturn else { return }
 
+        let agentTokenValue = agentTokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let directTokenValue = directTokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let agentMaxOutputTokens = Int(agentTokenValue),
+              DeepSeekOutputLimits.isValid(agentMaxOutputTokens),
+              let directChatMaxOutputTokens = Int(directTokenValue),
+              DeepSeekOutputLimits.isValid(directChatMaxOutputTokens)
+        else {
+            showSpeech("最大输出 Token 必须是 1 到 384000 之间的整数。", duration: 7)
+            return
+        }
+
         do {
             let key = keyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             if !key.isEmpty {
                 try settingsStore.saveAPIKey(key)
             }
             settingsStore.selectedModel = DeepSeekModel.allCases[modelPopup.indexOfSelectedItem]
+            settingsStore.agentMaxOutputTokens = agentMaxOutputTokens
+            settingsStore.directChatMaxOutputTokens = directChatMaxOutputTokens
             agentManager.shutdown()
             resetAgentSession()
             if settingsStore.apiKey() == nil {
@@ -266,7 +301,12 @@ final class PetController: NSObject {
         activateSecurityScopedWorkspace(workspace)
         showSpeech("正在重启 Agent…", duration: nil)
         agentManager.stopCurrentTask()
-        agentManager.start(workspace: workspace, apiKey: apiKey, model: settingsStore.selectedModel) { [weak self] result in
+        agentManager.start(
+            workspace: workspace,
+            apiKey: apiKey,
+            model: settingsStore.selectedModel,
+            maxOutputTokens: settingsStore.agentMaxOutputTokens
+        ) { [weak self] result in
             switch result {
             case .success:
                 self?.showSpeech("Agent 已重新启动", duration: 5)
@@ -279,7 +319,10 @@ final class PetController: NSObject {
     @objc func showAgentStatus() {
         recordUserInteraction()
         let workspace = agentWorkspaceStore.workspaceURL()?.path ?? "未选择工作目录"
-        showSpeech("\(agentManager.statusText)\n工作目录：\(workspace)", duration: 12)
+        showSpeech(
+            "\(agentManager.statusText)\n工作目录：\(workspace)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)",
+            duration: 12
+        )
     }
 
     @objc func configureWaiting() {
@@ -452,7 +495,7 @@ final class PetController: NSObject {
         let chatItem = NSMenuItem(title: "开始 AI 对话…", action: #selector(startDeepSeekChat), keyEquivalent: "")
         chatItem.target = self
         menu.addItem(chatItem)
-        let settingsItem = NSMenuItem(title: "设置 DeepSeek API…", action: #selector(configureDeepSeek), keyEquivalent: "")
+        let settingsItem = NSMenuItem(title: "设置 DeepSeek…", action: #selector(configureDeepSeek), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
         if AgentProcessManager.platformSupported {
@@ -478,6 +521,7 @@ final class PetController: NSObject {
         showSpeech("让我想一想…", duration: nil)
         let model = settingsStore.selectedModel
         let history = Array(conversationHistory.suffix(10))
+        let maxOutputTokens = settingsStore.directChatMaxOutputTokens
 
         Task { [weak self] in
             guard let self else { return }
@@ -486,7 +530,8 @@ final class PetController: NSObject {
                     to: question,
                     apiKey: apiKey,
                     model: model,
-                    history: history
+                    history: history,
+                    maxOutputTokens: maxOutputTokens
                 )
                 await MainActor.run {
                     self.isRequestInFlight = false
@@ -497,6 +542,15 @@ final class PetController: NSObject {
                     }
                     self.showSpeech(answer, duration: 30)
                     self.petView.showAffection()
+                }
+            } catch let error as DeepSeekError {
+                await MainActor.run {
+                    self.isRequestInFlight = false
+                    if case let .outputLimitReached(partial) = error {
+                        self.showOutputLimitWarning(partial: partial, source: "普通对话")
+                    } else {
+                        self.showError(error)
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -512,7 +566,12 @@ final class PetController: NSObject {
         activateSecurityScopedWorkspace(workspace)
         isRequestInFlight = true
         showSpeech("小柴 Agent 开始工作啦…", duration: 5)
-        agentManager.start(workspace: workspace, apiKey: apiKey, model: settingsStore.selectedModel) { [weak self] result in
+        agentManager.start(
+            workspace: workspace,
+            apiKey: apiKey,
+            model: settingsStore.selectedModel,
+            maxOutputTokens: settingsStore.agentMaxOutputTokens
+        ) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success:
@@ -524,11 +583,7 @@ final class PetController: NSObject {
                         self.showSpeech(answer, duration: 45)
                         self.petView.showAffection()
                     case let .failure(error):
-                        if case AgentRuntimeError.taskStopped = error {
-                            self.showSpeech("任务已停止，Agent 已重置", duration: 6)
-                        } else {
-                            self.offerDirectChatFallback(question: question, error: error)
-                        }
+                        self.handleAgentPromptFailure(question: question, error: error)
                     }
                 }
             case let .failure(error):
@@ -551,6 +606,27 @@ final class PetController: NSObject {
         } else {
             showError(error)
         }
+    }
+
+    private func handleAgentPromptFailure(question: String, error: Error) {
+        guard let agentError = error as? AgentRuntimeError else {
+            offerDirectChatFallback(question: question, error: error)
+            return
+        }
+        switch agentError {
+        case .taskStopped:
+            showSpeech("任务已停止，Agent 已重置", duration: 6)
+        case let .outputLimitReached(partial):
+            showOutputLimitWarning(partial: partial, source: "Agent")
+        default:
+            offerDirectChatFallback(question: question, error: error)
+        }
+    }
+
+    private func showOutputLimitWarning(partial: String, source: String) {
+        let warning = "⚠️ \(source) 已达到本轮最大输出 Token，以上内容可能不完整。请在 DeepSeek 设置中提高上限，或让我分段完成。"
+        let text = partial.trimmingCharacters(in: .whitespacesAndNewlines)
+        showSpeech(text.isEmpty ? warning : "\(text)\n\n---\n\(warning)", duration: nil)
     }
 
     private func chooseAgentWorkspace() -> URL? {
@@ -625,8 +701,8 @@ final class PetController: NSObject {
         return root
     }
 
-    private func showSpeech(_ text: String, duration: TimeInterval?) {
-        speechBubble.show(text: text, anchoredTo: window)
+    private func showSpeech(_ text: String, duration: TimeInterval?, followLatest: Bool = false) {
+        speechBubble.show(text: text, anchoredTo: window, followLatest: followLatest)
         bubbleDismissAt = duration.map { ProcessInfo.processInfo.systemUptime + $0 }
     }
 

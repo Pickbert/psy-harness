@@ -34,6 +34,7 @@ enum AgentRuntimeError: LocalizedError {
     case processExited(Int32)
     case protocolError(String)
     case noResponse
+    case outputLimitReached(partial: String)
     case taskStopped
 
     var errorDescription: String? {
@@ -46,6 +47,7 @@ enum AgentRuntimeError: LocalizedError {
         case let .processExited(code): return "DeepSeek Harness Agent 已退出（状态码 \(code)）。"
         case let .protocolError(message): return "Agent 通信异常：\(message)"
         case .noResponse: return "Agent 没有返回可显示的文字。"
+        case .outputLimitReached: return "Agent 已达到本轮最大输出 Token，当前回答可能不完整。"
         case .taskStopped: return "当前 Agent 任务已停止。"
         }
     }
@@ -72,6 +74,7 @@ final class AgentProcessManager {
         let workspace: URL
         let apiKey: String
         let model: DeepSeekModel
+        let maxOutputTokens: Int
     }
 
     private let queue = DispatchQueue(label: "com.local.desktoppet.agent-process")
@@ -95,6 +98,7 @@ final class AgentProcessManager {
     private var streamedText = ""
     private var finalText = ""
     private var lastTurnError: String?
+    private var lastTurnFailureKind: String?
 
     var statusText: String {
         queue.sync {
@@ -108,6 +112,7 @@ final class AgentProcessManager {
         workspace: URL,
         apiKey: String,
         model: DeepSeekModel,
+        maxOutputTokens: Int,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         queue.async {
@@ -115,16 +120,26 @@ final class AgentProcessManager {
                 self.completeOnMain(completion, with: .failure(AgentRuntimeError.unsupportedPlatform))
                 return
             }
+            let normalizedMaxOutputTokens = DeepSeekOutputLimits.normalized(
+                maxOutputTokens,
+                default: DeepSeekOutputLimits.defaultAgent
+            )
             if self.ready,
                self.process?.isRunning == true,
                self.launchConfiguration?.workspace.standardizedFileURL == workspace.standardizedFileURL,
                self.launchConfiguration?.apiKey == apiKey,
-               self.launchConfiguration?.model == model {
+               self.launchConfiguration?.model == model,
+               self.launchConfiguration?.maxOutputTokens == normalizedMaxOutputTokens {
                 self.completeOnMain(completion, with: .success(()))
                 return
             }
             self.stopLocked(notifyActive: false)
-            let config = LaunchConfiguration(workspace: workspace.standardizedFileURL, apiKey: apiKey, model: model)
+            let config = LaunchConfiguration(
+                workspace: workspace.standardizedFileURL,
+                apiKey: apiKey,
+                model: model,
+                maxOutputTokens: normalizedMaxOutputTokens
+            )
             self.launchConfiguration = config
             do {
                 try self.launchLocked(config: config, completion: completion)
@@ -154,6 +169,7 @@ final class AgentProcessManager {
             self.streamedText = ""
             self.finalText = ""
             self.lastTurnError = nil
+            self.lastTurnFailureKind = nil
             self.sendRequestLocked(
                 method: "session/prompt",
                 params: [
@@ -285,7 +301,7 @@ final class AgentProcessManager {
                 "cwd": config.workspace.path,
                 "provider": "deepseek-official",
                 "model": config.model.rawValue,
-                "maxTokens": 4096
+                "maxTokens": config.maxOutputTokens
             ]
         ) { result in
             switch result {
@@ -424,13 +440,11 @@ final class AgentProcessManager {
                 let text = finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? streamedText.trimmingCharacters(in: .whitespacesAndNewlines)
                     : finalText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !text.isEmpty {
-                    finishActiveLocked(.success(text))
-                } else if let lastTurnError {
-                    finishActiveLocked(.failure(AgentRuntimeError.protocolError(lastTurnError)))
-                } else {
-                    finishActiveLocked(.failure(AgentRuntimeError.noResponse))
-                }
+                finishActiveLocked(Self.turnResult(
+                    text: text,
+                    failureKind: lastTurnFailureKind,
+                    failureMessage: lastTurnError
+                ).mapError { $0 as Error })
             }
         case "session.event":
             guard let event = notification.params["event"] as? [String: Any],
@@ -471,6 +485,8 @@ final class AgentProcessManager {
             emitActivity(isError ? "工具执行失败" : "工具执行完成")
         case "turn/end":
             if let reason = data["reason"] as? [String: Any] {
+                let kind = reason["kind"] as? String
+                lastTurnFailureKind = kind == "completed" ? nil : kind
                 lastTurnError = Self.turnFailureMessage(reason)
             }
         default:
@@ -655,5 +671,20 @@ final class AgentProcessManager {
         case "disposed": return "Agent 会话已关闭。"
         default: return "Agent 回合结束（\(kind)）。"
         }
+    }
+
+    static func turnResult(
+        text: String,
+        failureKind: String?,
+        failureMessage: String?
+    ) -> Result<String, AgentRuntimeError> {
+        if failureKind == "max-tokens" {
+            return .failure(.outputLimitReached(partial: text))
+        }
+        if let failureMessage, !failureMessage.isEmpty {
+            return .failure(.protocolError(failureMessage))
+        }
+        if !text.isEmpty { return .success(text) }
+        return .failure(.noResponse)
     }
 }

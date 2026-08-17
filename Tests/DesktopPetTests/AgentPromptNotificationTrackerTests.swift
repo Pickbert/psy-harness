@@ -79,6 +79,32 @@ final class AgentPromptNotificationTrackerTests: XCTestCase {
         XCTAssertNil(AgentProcessManager.turnFailureMessage(["kind": "completed"]))
     }
 
+    func testMaxTokenTerminationWinsOverPartialText() {
+        let result = AgentProcessManager.turnResult(
+            text: "我现在开始写文件。",
+            failureKind: "max-tokens",
+            failureMessage: "Agent 已达到本轮最大输出长度。"
+        )
+
+        guard case let .failure(.outputLimitReached(partial)) = result else {
+            return XCTFail("max-tokens must not be reported as a successful partial answer")
+        }
+        XCTAssertEqual(partial, "我现在开始写文件。")
+    }
+
+    func testCompletedTurnReturnsText() {
+        let result = AgentProcessManager.turnResult(
+            text: "完整回答",
+            failureKind: nil,
+            failureMessage: nil
+        )
+
+        guard case let .success(text) = result else {
+            return XCTFail("completed text should be successful")
+        }
+        XCTAssertEqual(text, "完整回答")
+    }
+
     private func status(_ value: String) -> [String: Any] {
         ["sessionId": "session", "status": value]
     }

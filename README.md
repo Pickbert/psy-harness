@@ -73,10 +73,11 @@ build/windows/DesktopPet-Windows-x64.exe
 
 ## DeepSeek AI 对话
 
-1. 右键小狗，选择“设置 DeepSeek API…”并填写自己的 API Key。
+1. 右键小狗，选择“设置 DeepSeek…”并填写自己的 API Key。
 2. 默认模型为 `deepseek-v4-flash`，也可以切换为 `deepseek-v4-pro`。
-3. 在短时间内连续点击小狗 3 次，输入问题并按回车发送；macOS 也可在任意应用中按 `⌥⌘0` 直接唤醒对话框。
-4. 回复会显示在小狗上方的对话气泡中；再次三连击可以继续上下文对话。
+3. Agent 最大输出 Token 默认 `256000`，普通对话默认 `8192`，两者都可在设置中调整（范围 `1–384000`）。
+4. 在短时间内连续点击小狗 3 次，输入问题并按回车发送；macOS 也可在任意应用中按 `⌥⌘0` 直接唤醒对话框。
+5. 回复会显示在小狗上方的对话气泡中；再次三连击可以继续上下文对话。
 
 ### 本地 Harness Agent（macOS）
 
@@ -85,6 +86,8 @@ build/windows/DesktopPet-Windows-x64.exe
 Agent 是 App 内独立的预编译 sidecar，不从 TypeScript 源码启动，也不依赖用户电脑上的 Node、pnpm 或 Python。API Key 仍从 macOS 钥匙串读取，只通过子进程环境传入；会话数据保存在 `Application Support/DesktopPet/Agent/Sessions`。Windows、Intel Mac 和 macOS 13 不启动 Agent，继续使用原来的普通 DeepSeek 对话。
 
 原生桥接使用 Harness 返回的 `messageId` 等待对应的持久化入队回执，再收集该回执之后直到下一次空闲状态的通知。应用重启并恢复旧会话时，历史恢复事件不会被误判为新问题的结果。
+
+DeepSeek V4 的模型上下文由 Harness 按 `1,000,000` Token 管理，与单轮最大输出分开。若服务端仍以 `max-tokens` 结束，App 会保留已收到的部分内容并明确标记为不完整，不再误报任务成功。长内容流式显示时，气泡会跟随最新输出滚动。
 
 安全策略为 `workspace-write + ask`：读取所选目录可自动进行，写入和命令会显示审批卡，只能“允许一次”或“拒绝”；删除、提权、明显破坏性命令和结构化越界路径会直接拒绝。停止任务会终止并重新启动 sidecar，未完成审批按拒绝处理。
 

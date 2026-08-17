@@ -53,11 +53,18 @@ final class SpeechBubbleController {
 
     var isVisible: Bool { panel.isVisible }
 
-    func show(text: String, anchoredTo anchorWindow: NSWindow) {
+    func show(text: String, anchoredTo anchorWindow: NSWindow, followLatest: Bool = false) {
         let renderedText = renderMarkdown(text)
         textView.textStorage?.setAttributedString(renderedText)
-        textView.scrollToBeginningOfDocument(nil)
         resize(for: renderedText)
+        if let textContainer = textView.textContainer {
+            textView.layoutManager?.ensureLayout(for: textContainer)
+        }
+        if followLatest {
+            textView.scrollToEndOfDocument(nil)
+        } else {
+            textView.scrollToBeginningOfDocument(nil)
+        }
         reposition(anchoredTo: anchorWindow)
         panel.orderFrontRegardless()
     }
