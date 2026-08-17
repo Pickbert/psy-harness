@@ -1,4 +1,4 @@
 upstream=https://github.com/deepseek-ai/deepseek-harness
 commit=47f943859bef60e4160492346772ded9b24f765a
 runtime=dsh-jsonrpc-agent-pkg-macos-arm64
-local_patch=desktop-pet-jsonrpc-approval-policy-and-resume-v2
+local_patch=desktop-pet-jsonrpc-approval-policy-resume-and-noop-escalation-v3

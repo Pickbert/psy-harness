@@ -55,8 +55,15 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
         renderContent()
     }
 
-    func requestApproval(_ request: AgentApprovalRequest, completion: @escaping (AgentApprovalDecision) -> Void) {
+    func requestApproval(
+        _ request: AgentApprovalRequest,
+        anchoredTo anchorWindow: NSWindow,
+        completion: @escaping (AgentApprovalDecision) -> Void
+    ) {
         hideApproval(answer: .rejected)
+        transcript = ""
+        activityLines.removeAll()
+        renderContent()
         approvalCompletion = completion
         approvalTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: false) { [weak self] _ in
             self?.hideApproval(answer: .rejected)
@@ -73,8 +80,14 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
         scrollBottomToPanel?.isActive = false
         scrollBottomToApproval?.isActive = true
         statusLabel.stringValue = "等待你确认操作"
+        panel.setContentSize(CGSize(width: 620, height: 230))
+        reposition(anchoredTo: anchorWindow)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+    }
+
+    func cancelApproval() {
+        hideApproval(answer: .rejected)
     }
 
     func finish(_ text: String) {
@@ -114,7 +127,20 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
         approvalCard.isHidden = true
         scrollBottomToApproval?.isActive = false
         scrollBottomToPanel?.isActive = true
+        if answer != nil { panel.orderOut(nil) }
         if let answer { completion?(answer) }
+    }
+
+    private func reposition(anchoredTo anchorWindow: NSWindow) {
+        let anchor = anchorWindow.frame
+        let visibleFrame = (anchorWindow.screen ?? NSScreen.main)?.visibleFrame ?? anchor
+        var x = anchor.midX - panel.frame.width / 2
+        var y = anchor.maxY + 14
+        x = min(max(x, visibleFrame.minX + 10), visibleFrame.maxX - panel.frame.width - 10)
+        if y + panel.frame.height > visibleFrame.maxY {
+            y = max(visibleFrame.minY + 10, anchor.minY - panel.frame.height - 14)
+        }
+        panel.setFrameOrigin(CGPoint(x: x, y: y))
     }
 
     private func renderContent() {

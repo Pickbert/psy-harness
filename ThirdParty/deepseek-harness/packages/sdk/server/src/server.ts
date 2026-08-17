@@ -51,8 +51,14 @@ const DESTRUCTIVE_COMMAND = /(^|[\s;&|])(rm|rmdir|unlink|shred|truncate|sudo|doa
 
 export function desktopPetPreToolDecision(exec: ToolExecution, cwd: string): PreToolDecision | undefined {
   const args = exec.arguments as Record<string, unknown> | undefined
-  const serialized = String(JSON.stringify(exec.arguments) ?? '').toLowerCase()
-  if (serialized.includes('sandbox_permissions') || serialized.includes('danger-full-access')) {
+  const requestedSandbox = args?.sandbox_permissions
+  if (requestedSandbox === 'workspace-write') {
+    // DesktopPet already runs every tool under workspace-write. Models may
+    // repeat the advertised retry fields after an earlier denial; normalize
+    // that no-op request so it reaches the ordinary one-shot approval path.
+    delete args?.sandbox_permissions
+    delete args?.justification
+  } else if (requestedSandbox !== undefined) {
     return { kind: 'deny', reason: 'DesktopPet policy blocks sandbox escalation.' }
   }
   if (exec.name.toLowerCase().includes('delete') || DESTRUCTIVE_COMMAND.test(String(args?.command ?? ''))) {

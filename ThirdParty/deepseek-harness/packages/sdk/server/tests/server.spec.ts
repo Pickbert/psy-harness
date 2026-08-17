@@ -127,6 +127,32 @@ describe('HarnessSdkJsonRpcServer', () => {
       .toMatchObject({ kind: 'deny' })
   })
 
+  it('normalizes a redundant workspace-write retry without permitting wider escalation', () => {
+    const writeArgs = {
+      file_path: '/workspace/game.html',
+      content: '.cell { transform: scale(1.06); }',
+      sandbox_permissions: 'workspace-write',
+      justification: 'create the requested file',
+    }
+    const write = { name: 'write', arguments: writeArgs } as never
+
+    expect(desktopPetPreToolDecision(write, '/workspace')).toEqual({
+      kind: 'ask',
+      reason: 'write a file in the selected workspace',
+    })
+    expect(writeArgs).not.toHaveProperty('sandbox_permissions')
+    expect(writeArgs).not.toHaveProperty('justification')
+    expect(desktopPetPreToolDecision({
+      name: 'write',
+      arguments: {
+        file_path: '/workspace/game.html',
+        content: 'safe',
+        sandbox_permissions: 'danger-full-access',
+        justification: 'escape the workspace',
+      },
+    } as never, '/workspace')).toMatchObject({ kind: 'deny' })
+  })
+
   it('bridges owned-session approvals to the DesktopPet client and accepts only one-shot decisions', async () => {
     const listeners = new Map<string, (...args: never[]) => unknown>()
     const ctx = {

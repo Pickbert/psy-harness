@@ -32,6 +32,7 @@ final class PetController: NSObject {
     private var bubbleDismissAt: TimeInterval?
     private var conversationHistory: [DeepSeekMessage] = []
     private var isRequestInFlight = false
+    private var isAwaitingAgentApproval = false
     private var securityScopedWorkspace: URL?
     private var lastInteractionAt = ProcessInfo.processInfo.systemUptime
     private var mood: PetMood = .idle {
@@ -76,17 +77,30 @@ final class PetController: NSObject {
         }
 
         agentManager.onTranscript = { [weak self] text in
-            self?.agentPanel.updateTranscript(text)
+            self?.showSpeech(text, duration: nil)
         }
         agentManager.onActivity = { [weak self] text in
-            self?.agentPanel.showActivity(text)
+            self?.showSpeech(text, duration: 6)
         }
         agentManager.onApproval = { [weak self] request, completion in
             guard let self else {
                 completion(.rejected)
                 return
             }
-            self.agentPanel.requestApproval(request, completion: completion)
+            self.isAwaitingAgentApproval = true
+            self.targetX = nil
+            self.mood = .idle
+            self.bubbleDismissAt = nil
+            self.showSpeech("这个操作需要你确认一下～", duration: nil)
+            self.agentPanel.requestApproval(request, anchoredTo: self.window) { [weak self] decision in
+                guard let self else {
+                    completion(.rejected)
+                    return
+                }
+                self.isAwaitingAgentApproval = false
+                self.nextDecisionAt = ProcessInfo.processInfo.systemUptime + 2
+                completion(decision)
+            }
         }
 
         resetPosition(animated: false)
@@ -105,6 +119,7 @@ final class PetController: NSObject {
 
     func hide() {
         recordUserInteraction()
+        agentPanel.cancelApproval()
         window.orderOut(nil)
         speechBubble.hide()
         isVisible = false
@@ -120,6 +135,7 @@ final class PetController: NSObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        agentPanel.cancelApproval()
         speechBubble.hide()
         agentManager.shutdown()
         releaseSecurityScopedWorkspace()
@@ -232,9 +248,9 @@ final class PetController: NSObject {
 
     @objc func stopAgentTask() {
         recordUserInteraction()
+        agentPanel.cancelApproval()
         agentManager.stopCurrentTask()
         isRequestInFlight = false
-        agentPanel.showActivity("任务已停止；下次提问会重新启动 Agent")
         showSpeech("已经停下来了，汪。", duration: 5)
     }
 
@@ -248,15 +264,14 @@ final class PetController: NSObject {
             return
         }
         activateSecurityScopedWorkspace(workspace)
-        agentPanel.show(workspace: workspace)
-        agentPanel.showActivity("正在重启 Agent…")
+        showSpeech("正在重启 Agent…", duration: nil)
         agentManager.stopCurrentTask()
         agentManager.start(workspace: workspace, apiKey: apiKey, model: settingsStore.selectedModel) { [weak self] result in
             switch result {
             case .success:
-                self?.agentPanel.showActivity("Agent 已重新启动")
+                self?.showSpeech("Agent 已重新启动", duration: 5)
             case let .failure(error):
-                self?.agentPanel.showError(error.localizedDescription)
+                self?.showError(error)
             }
         }
     }
@@ -357,7 +372,7 @@ final class PetController: NSObject {
             self.bubbleDismissAt = nil
         }
 
-        guard !isPaused, isVisible else { return }
+        guard !isPaused, !isAwaitingAgentApproval, isVisible else { return }
 
         let timeout = TimeInterval(waitingTimeoutMinutes * 60)
         if timeout > 0, !isRequestInFlight, now - lastInteractionAt >= timeout {
@@ -496,7 +511,6 @@ final class PetController: NSObject {
         guard let apiKey = settingsStore.apiKey() else { return }
         activateSecurityScopedWorkspace(workspace)
         isRequestInFlight = true
-        agentPanel.show(workspace: workspace)
         showSpeech("小柴 Agent 开始工作啦…", duration: 5)
         agentManager.start(workspace: workspace, apiKey: apiKey, model: settingsStore.selectedModel) { [weak self] result in
             guard let self else { return }
@@ -507,13 +521,11 @@ final class PetController: NSObject {
                     self.isRequestInFlight = false
                     switch promptResult {
                     case let .success(answer):
-                        self.agentPanel.finish(answer)
-                        self.showSpeech(answer, duration: 30)
+                        self.showSpeech(answer, duration: 45)
                         self.petView.showAffection()
                     case let .failure(error):
-                        self.agentPanel.showError(error.localizedDescription)
                         if case AgentRuntimeError.taskStopped = error {
-                            self.agentPanel.showActivity("任务已停止，Agent 已重置")
+                            self.showSpeech("任务已停止，Agent 已重置", duration: 6)
                         } else {
                             self.offerDirectChatFallback(question: question, error: error)
                         }
@@ -521,7 +533,6 @@ final class PetController: NSObject {
                 }
             case let .failure(error):
                 self.isRequestInFlight = false
-                self.agentPanel.showError(error.localizedDescription)
                 self.offerDirectChatFallback(question: question, error: error)
             }
         }
