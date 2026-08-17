@@ -76,6 +76,14 @@ final class MarkdownTableParserTests: XCTestCase {
         XCTAssertEqual(cells.count, 4)
         XCTAssertEqual(Set(cells.map(\.startingRow)), [0, 1])
         XCTAssertEqual(Set(cells.map(\.startingColumn)), [0, 1])
+        XCTAssertTrue(cells.allSatisfy { $0.contentWidthValueType == .percentageValueType })
         XCTAssertFalse(rendered.string.contains("---"))
+
+        let storage = rendered.string as NSString
+        for index in 0..<storage.length where storage.character(at: index) == 10 {
+            let style = rendered.attribute(.paragraphStyle, at: index, effectiveRange: nil)
+                as? NSParagraphStyle
+            XCTAssertEqual(style?.textBlocks.compactMap { $0 as? NSTextTableBlock }.count, 1)
+        }
     }
 }

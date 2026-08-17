@@ -268,17 +268,17 @@ final class SpeechBubbleController {
         let result = NSMutableAttributedString()
         let table = NSTextTable()
         table.numberOfColumns = model.headers.count
-        table.layoutAlgorithm = .automaticLayoutAlgorithm
+        table.layoutAlgorithm = .fixedLayoutAlgorithm
         table.collapsesBorders = true
         table.hidesEmptyCells = false
         table.setContentWidth(100, type: .percentageValueType)
+        let columnWidth = 100 / CGFloat(model.headers.count)
 
         let rows = [model.headers] + model.rows
         for (rowIndex, row) in rows.enumerated() {
             for columnIndex in 0..<model.headers.count {
                 let rawValue = columnIndex < row.count ? row[columnIndex] : ""
                 let cell = renderTextMarkdown(rawValue.isEmpty ? " " : rawValue)
-                let cellRange = NSRange(location: 0, length: cell.length)
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.lineSpacing = 2
                 paragraph.paragraphSpacing = 0
@@ -295,27 +295,32 @@ final class SpeechBubbleController {
                     startingColumn: columnIndex,
                     columnSpan: 1
                 )
-                block.setWidth(1, type: .absoluteValueType, for: .border)
-                block.setWidth(7, type: .absoluteValueType, for: .padding)
-                block.setBorderColor(NSColor.separatorColor.withAlphaComponent(0.72))
+                block.setContentWidth(columnWidth, type: .percentageValueType)
+                block.setWidth(0.5, type: .absoluteValueType, for: .border)
+                block.setWidth(6, type: .absoluteValueType, for: .padding)
+                block.setBorderColor(NSColor.separatorColor.withAlphaComponent(0.48))
                 block.backgroundColor = rowIndex == 0
-                    ? NSColor.controlAccentColor.withAlphaComponent(0.16)
+                    ? NSColor.controlAccentColor.withAlphaComponent(0.13)
                     : (rowIndex.isMultiple(of: 2)
                         ? NSColor.labelColor.withAlphaComponent(0.055)
                         : NSColor.clear)
                 paragraph.textBlocks = [block]
-                cell.addAttribute(.paragraphStyle, value: paragraph, range: cellRange)
                 if rowIndex == 0 {
                     cell.addAttribute(
                         .font,
                         value: NSFont.systemFont(ofSize: 14, weight: .semibold),
-                        range: cellRange
+                        range: NSRange(location: 0, length: cell.length)
                     )
                 }
-                result.append(cell)
                 let isLastCell = rowIndex == rows.count - 1
                     && columnIndex == model.headers.count - 1
-                if !isLastCell { result.append(NSAttributedString(string: "\n")) }
+                if !isLastCell { cell.append(NSAttributedString(string: "\n")) }
+                cell.addAttribute(
+                    .paragraphStyle,
+                    value: paragraph,
+                    range: NSRange(location: 0, length: cell.length)
+                )
+                result.append(cell)
             }
         }
         return result
