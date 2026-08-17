@@ -4,20 +4,40 @@ enum PetMood {
     case idle
     case walking
     case sleeping
+    case waiting
 }
 
 struct PetFrames {
     let idle: NSImage
     let blink: NSImage
     let walking: [NSImage]
+    let waiting: NSImage
+    let waitingBlink: NSImage
+    let waitingEar: NSImage
+    let waitingTail: NSImage
+}
+
+private enum WaitingMotion {
+    case ear
+    case tail
 }
 
 final class PetView: NSView {
     var onDragEnded: (() -> Void)?
     var onTripleClick: (() -> Void)?
     var onContextMenu: ((NSEvent) -> Void)?
+    var onInteraction: (() -> Void)?
 
-    var mood: PetMood = .idle
+    var mood: PetMood = .idle {
+        didSet {
+            if mood == .waiting, oldValue != .waiting {
+                waitingMotion = nil
+                nextWaitingMotionAt = animationTime + Double.random(in: 1.2...2.8)
+            } else if mood != .waiting {
+                waitingMotion = nil
+            }
+        }
+    }
     var isFacingRight = true
 
     private let frames: PetFrames
@@ -25,6 +45,10 @@ final class PetView: NSView {
     private var nextBlinkAt: TimeInterval = 2.4
     private var blinkStartedAt: TimeInterval?
     private var isDoubleBlink = false
+    private var waitingMotion: WaitingMotion?
+    private var waitingMotionStartedAt: TimeInterval = 0
+    private var waitingMotionEndsAt: TimeInterval = 0
+    private var nextWaitingMotionAt: TimeInterval = 2
     private var affectionStartedAt: TimeInterval = -10
     private var affectionEndsAt: TimeInterval = -10
     private var mouseDownLocation: CGPoint?
@@ -55,6 +79,7 @@ final class PetView: NSView {
     func update(deltaTime: TimeInterval) {
         animationTime += deltaTime
         updateBlink()
+        updateWaitingMotion()
         hearts = hearts.compactMap { particle in
             var next = particle
             next.age += deltaTime
@@ -89,6 +114,7 @@ final class PetView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let window else { return }
+        onInteraction?()
         mouseDownLocation = NSEvent.mouseLocation
         windowOriginAtMouseDown = window.frame.origin
         didDrag = false
@@ -124,6 +150,7 @@ final class PetView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        onInteraction?()
         onContextMenu?(event)
     }
 
@@ -162,6 +189,10 @@ final class PetView: NSView {
             bob = 0
             breathingScale = 0.97 + CGFloat((sin(animationTime * 2.2) + 1) * 0.012)
             tilt = -0.035
+        case .waiting:
+            bob = CGFloat(sin(animationTime * 2.0) * 0.55)
+            breathingScale = 0.992 + CGFloat((sin(animationTime * 2.0) + 1) * 0.006)
+            tilt = CGFloat(sin(animationTime * 0.9) * 0.004)
         case .idle:
             bob = CGFloat(sin(animationTime * 2.8) * 1.5)
             breathingScale = 0.99 + CGFloat((sin(animationTime * 2.8) + 1) * 0.008)
@@ -190,7 +221,7 @@ final class PetView: NSView {
     }
 
     private func updateBlink() {
-        guard mood == .idle else {
+        guard mood == .idle || mood == .waiting else {
             blinkStartedAt = nil
             return
         }
@@ -207,6 +238,18 @@ final class PetView: NSView {
         }
     }
 
+    private func updateWaitingMotion() {
+        guard mood == .waiting else { return }
+        if waitingMotion != nil, animationTime >= waitingMotionEndsAt {
+            waitingMotion = nil
+            nextWaitingMotionAt = animationTime + Double.random(in: 1.8...4.5)
+        } else if waitingMotion == nil, animationTime >= nextWaitingMotionAt {
+            waitingMotion = Bool.random() ? .ear : .tail
+            waitingMotionStartedAt = animationTime
+            waitingMotionEndsAt = animationTime + (waitingMotion == .ear ? 0.38 : 0.72)
+        }
+    }
+
     private func activeFrame() -> NSImage {
         switch mood {
         case .walking:
@@ -215,6 +258,23 @@ final class PetView: NSView {
             return frames.walking[frameIndex]
         case .sleeping:
             return frames.blink
+        case .waiting:
+            if let blinkStartedAt {
+                let elapsed = animationTime - blinkStartedAt
+                if elapsed <= 0.13 || (isDoubleBlink && elapsed >= 0.19 && elapsed <= 0.31) {
+                    return frames.waitingBlink
+                }
+            }
+            if let waitingMotion {
+                let elapsed = animationTime - waitingMotionStartedAt
+                switch waitingMotion {
+                case .ear:
+                    return (elapsed < 0.14 || elapsed >= 0.24) ? frames.waitingEar : frames.waiting
+                case .tail:
+                    return Int(elapsed / 0.12).isMultiple(of: 2) ? frames.waitingTail : frames.waiting
+                }
+            }
+            return frames.waiting
         case .idle:
             guard let blinkStartedAt else { return frames.idle }
             let elapsed = animationTime - blinkStartedAt

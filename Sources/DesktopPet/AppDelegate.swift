@@ -1,18 +1,27 @@
 import AppKit
+import Carbon
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let deepSeekHotKeySignature: OSType = 0x44504730 // "DPG0"
+    private static let deepSeekHotKeyID: UInt32 = 1
+
     private var petController: PetController?
     private var statusItem: NSStatusItem?
+    private var chatItem: NSMenuItem?
     private var pauseItem: NSMenuItem?
     private var visibilityItem: NSMenuItem?
+    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyHandler: EventHandlerRef?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         petController = PetController()
         configureStatusItem()
+        registerDeepSeekHotKey()
         petController?.show()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        unregisterDeepSeekHotKey()
         petController?.stop()
     }
 
@@ -25,13 +34,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.toolTip = "桌面小柴"
 
         let menu = NSMenu()
-        let chatItem = NSMenuItem(title: "开始 AI 对话…", action: #selector(startChat), keyEquivalent: "")
+        let chatItem = NSMenuItem(title: "开始 AI 对话…", action: #selector(startChat), keyEquivalent: "0")
+        chatItem.keyEquivalentModifierMask = [.command, .option]
         chatItem.target = self
         menu.addItem(chatItem)
+        self.chatItem = chatItem
 
         let deepSeekItem = NSMenuItem(title: "设置 DeepSeek API…", action: #selector(configureDeepSeek), keyEquivalent: "")
         deepSeekItem.target = self
         menu.addItem(deepSeekItem)
+        let waitingItem = NSMenuItem(title: "设置等待时间…", action: #selector(configureWaiting), keyEquivalent: "")
+        waitingItem.target = self
+        menu.addItem(waitingItem)
         menu.addItem(.separator())
 
         let callItem = NSMenuItem(title: "呼唤小狗", action: #selector(callPet), keyEquivalent: "")
@@ -77,6 +91,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
     }
 
+    private func registerDeepSeekHotKey() {
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let handlerStatus = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userData in
+                guard let event, let userData else { return OSStatus(eventNotHandledErr) }
+                var hotKeyID = EventHotKeyID(signature: 0, id: 0)
+                let status = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+                guard
+                    status == noErr,
+                    hotKeyID.signature == AppDelegate.deepSeekHotKeySignature,
+                    hotKeyID.id == AppDelegate.deepSeekHotKeyID
+                else { return OSStatus(eventNotHandledErr) }
+
+                let appDelegate = Unmanaged<AppDelegate>
+                    .fromOpaque(userData)
+                    .takeUnretainedValue()
+                DispatchQueue.main.async {
+                    appDelegate.openDeepSeekFromGlobalHotKey()
+                }
+                return noErr
+            },
+            1,
+            &eventType,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &hotKeyHandler
+        )
+        guard handlerStatus == noErr else {
+            markHotKeyUnavailable()
+            return
+        }
+
+        let hotKeyID = EventHotKeyID(
+            signature: Self.deepSeekHotKeySignature,
+            id: Self.deepSeekHotKeyID
+        )
+        let registrationStatus = RegisterEventHotKey(
+            UInt32(kVK_ANSI_0),
+            UInt32(cmdKey | optionKey),
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+        if registrationStatus != noErr {
+            if let hotKeyHandler {
+                RemoveEventHandler(hotKeyHandler)
+                self.hotKeyHandler = nil
+            }
+            markHotKeyUnavailable()
+        }
+    }
+
+    private func unregisterDeepSeekHotKey() {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+        if let hotKeyHandler {
+            RemoveEventHandler(hotKeyHandler)
+            self.hotKeyHandler = nil
+        }
+    }
+
+    private func markHotKeyUnavailable() {
+        chatItem?.title = "开始 AI 对话…（⌥⌘0 已被占用）"
+        chatItem?.keyEquivalent = ""
+    }
+
+    private func openDeepSeekFromGlobalHotKey() {
+        guard let petController else { return }
+        if !petController.isVisible {
+            petController.show()
+            visibilityItem?.title = "隐藏小狗"
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        petController.startDeepSeekChat()
+    }
+
     @objc private func callPet() {
         petController?.callPet()
         visibilityItem?.title = "隐藏小狗"
@@ -88,6 +192,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func configureDeepSeek() {
         petController?.configureDeepSeek()
+    }
+
+    @objc private func configureWaiting() {
+        petController?.configureWaiting()
     }
 
     @objc private func togglePause() {

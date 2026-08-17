@@ -50,6 +50,7 @@ constexpr UINT kMenuVisibility = 1003;
 constexpr UINT kMenuReset = 1004;
 constexpr UINT kMenuDeepSeekSettings = 1005;
 constexpr UINT kMenuDeepSeekChat = 1006;
+constexpr UINT kMenuWaitingSettings = 1007;
 constexpr UINT kMenuSizeSmall = 1010;
 constexpr UINT kMenuSizeMedium = 1011;
 constexpr UINT kMenuSizeLarge = 1012;
@@ -58,7 +59,14 @@ constexpr UINT kMenuExit = 1099;
 enum class Mood {
     Idle,
     Walking,
-    Sleeping
+    Sleeping,
+    Waiting
+};
+
+enum class WaitingMotion {
+    None,
+    Ear,
+    Tail
 };
 
 struct HeartParticle {
@@ -116,6 +124,10 @@ std::vector<IStream*> g_imageStreams;
 std::unique_ptr<Bitmap> g_dogImage;
 std::unique_ptr<Bitmap> g_blinkImage;
 std::array<std::unique_ptr<Bitmap>, 4> g_walkImages;
+std::unique_ptr<Bitmap> g_waitingImage;
+std::unique_ptr<Bitmap> g_waitingBlinkImage;
+std::unique_ptr<Bitmap> g_waitingEarImage;
+std::unique_ptr<Bitmap> g_waitingTailImage;
 std::mt19937 g_random{std::random_device{}()};
 
 int g_petSize = 190;
@@ -135,6 +147,12 @@ bool g_hasTarget = false;
 double g_nextBlink = 2.4;
 double g_blinkElapsed = -1;
 bool g_doubleBlink = false;
+DWORD g_waitingTimeoutMinutes = 3;
+double g_inactivitySeconds = 0;
+WaitingMotion g_waitingMotion = WaitingMotion::None;
+double g_waitingMotionAge = 0;
+double g_waitingMotionRemaining = 0;
+double g_nextWaitingMotion = 2;
 double g_affectionAge = 0;
 double g_affectionRemaining = 0;
 std::wstring g_message;
@@ -376,6 +394,58 @@ void SaveDeepSeekModel(const std::wstring& model) {
     }
 }
 
+DWORD ReadWaitingTimeoutMinutes() {
+    DWORD value = 3;
+    DWORD size = sizeof(value);
+    if (RegGetValueW(
+            HKEY_CURRENT_USER,
+            L"Software\\DesktopPet",
+            L"WaitingTimeoutMinutes",
+            RRF_RT_REG_DWORD,
+            nullptr,
+            &value,
+            &size
+        ) != ERROR_SUCCESS) {
+        return 3;
+    }
+    return std::min<DWORD>(value, 1440);
+}
+
+void SaveWaitingTimeoutMinutes(DWORD minutes) {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            L"Software\\DesktopPet",
+            0,
+            nullptr,
+            0,
+            KEY_SET_VALUE,
+            nullptr,
+            &key,
+            nullptr
+        ) == ERROR_SUCCESS) {
+        RegSetValueExW(
+            key,
+            L"WaitingTimeoutMinutes",
+            0,
+            REG_DWORD,
+            reinterpret_cast<const BYTE*>(&minutes),
+            sizeof(minutes)
+        );
+        RegCloseKey(key);
+    }
+}
+
+void RecordUserInteraction() {
+    g_inactivitySeconds = 0;
+    if (g_mood == Mood::Waiting) {
+        g_mood = Mood::Idle;
+        g_hasTarget = false;
+        g_decisionRemaining = 1.5;
+        g_waitingMotion = WaitingMotion::None;
+    }
+}
+
 std::wstring WinHttpErrorMessage(const wchar_t* prefix) {
     return std::wstring(prefix) + L"（错误码 " + std::to_wstring(GetLastError()) + L"）";
 }
@@ -406,7 +476,7 @@ bool CallDeepSeek(
     std::wstring& result
 ) {
     HINTERNET session = WinHttpOpen(
-        L"DesktopPet/0.2",
+        L"DesktopPet/0.3",
         WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
         WINHTTP_NO_PROXY_NAME,
         WINHTTP_NO_PROXY_BYPASS,
@@ -572,6 +642,46 @@ bool ShowDeepSeekSettings() {
         MAKEINTRESOURCEW(IDD_DEEPSEEK_SETTINGS),
         g_window,
         DeepSeekSettingsDialogProcedure,
+        0
+    ) == IDOK;
+}
+
+INT_PTR CALLBACK WaitingSettingsDialogProcedure(HWND dialog, UINT message, WPARAM wParam, LPARAM) {
+    if (message == WM_INITDIALOG) {
+        SetDlgItemInt(dialog, IDC_WAITING_MINUTES, g_waitingTimeoutMinutes, FALSE);
+        SetFocus(GetDlgItem(dialog, IDC_WAITING_MINUTES));
+        SendDlgItemMessageW(dialog, IDC_WAITING_MINUTES, EM_SETSEL, 0, -1);
+        return FALSE;
+    }
+    if (message == WM_COMMAND) {
+        if (LOWORD(wParam) == IDOK) {
+            BOOL valid = FALSE;
+            UINT minutes = GetDlgItemInt(dialog, IDC_WAITING_MINUTES, &valid, FALSE);
+            if (!valid || minutes > 1440) {
+                MessageBoxW(dialog, L"请输入 0 到 1440 之间的整数分钟。", kWindowTitle, MB_OK | MB_ICONWARNING);
+                return TRUE;
+            }
+            g_waitingTimeoutMinutes = minutes;
+            SaveWaitingTimeoutMinutes(g_waitingTimeoutMinutes);
+            RecordUserInteraction();
+            EndDialog(dialog, IDOK);
+            return TRUE;
+        }
+        if (LOWORD(wParam) == IDCANCEL) {
+            EndDialog(dialog, IDCANCEL);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+bool ShowWaitingSettings() {
+    SetForegroundWindow(g_window);
+    return DialogBoxParamW(
+        g_instance,
+        MAKEINTRESOURCEW(IDD_WAITING_SETTINGS),
+        g_window,
+        WaitingSettingsDialogProcedure,
         0
     ) == IDOK;
 }
@@ -1089,6 +1199,7 @@ void StartDeepSeekChat() {
 }
 
 void CallPet() {
+    RecordUserInteraction();
     if (!g_visible) {
         ShowWindow(g_window, SW_SHOWNOACTIVATE);
         g_visible = true;
@@ -1185,6 +1296,10 @@ void RenderPet() {
         } else if (g_mood == Mood::Sleeping) {
             scaleY = static_cast<float>(0.97 + (std::sin(g_animationTime * 2.2) + 1) * 0.012);
             tilt = -2;
+        } else if (g_mood == Mood::Waiting) {
+            bob = static_cast<float>(std::sin(g_animationTime * 2.0) * 0.55);
+            scaleY = static_cast<float>(0.992 + (std::sin(g_animationTime * 2.0) + 1) * 0.006);
+            tilt = static_cast<float>(std::sin(g_animationTime * 0.9) * 0.22);
         } else {
             bob = static_cast<float>(std::sin(g_animationTime * 2.8) * 1.5);
             scaleY = static_cast<float>(0.99 + (std::sin(g_animationTime * 2.8) + 1) * 0.008);
@@ -1206,6 +1321,23 @@ void RenderPet() {
             }
         } else if (g_mood == Mood::Sleeping) {
             activeImage = g_blinkImage.get();
+        } else if (g_mood == Mood::Waiting) {
+            bool showClosed = g_blinkElapsed >= 0 && (
+                g_blinkElapsed <= 0.13 ||
+                (g_doubleBlink && g_blinkElapsed >= 0.19 && g_blinkElapsed <= 0.31)
+            );
+            if (showClosed) {
+                activeImage = g_waitingBlinkImage.get();
+            } else if (g_waitingMotion == WaitingMotion::Ear) {
+                activeImage = (g_waitingMotionAge < 0.14 || g_waitingMotionAge >= 0.24)
+                    ? g_waitingEarImage.get()
+                    : g_waitingImage.get();
+            } else if (g_waitingMotion == WaitingMotion::Tail) {
+                int phase = static_cast<int>(g_waitingMotionAge / 0.12);
+                activeImage = phase % 2 == 0 ? g_waitingTailImage.get() : g_waitingImage.get();
+            } else {
+                activeImage = g_waitingImage.get();
+            }
         } else if (g_blinkElapsed >= 0) {
             bool showClosed = g_blinkElapsed <= 0.13 ||
                 (g_doubleBlink && g_blinkElapsed >= 0.19 && g_blinkElapsed <= 0.31);
@@ -1304,6 +1436,9 @@ void TickAnimation() {
     g_lastTick = now;
     deltaTime = std::clamp(deltaTime, 0.0, 0.05);
     g_animationTime += deltaTime;
+    if (g_visible) {
+        g_inactivitySeconds += deltaTime;
+    }
 
     if (g_speechBubbleWindow && IsWindowVisible(g_speechBubbleWindow)) {
         PositionSpeechBubble();
@@ -1320,7 +1455,7 @@ void TickAnimation() {
         g_affectionRemaining = std::max(0.0, g_affectionRemaining - deltaTime);
     }
 
-    if (g_mood == Mood::Idle) {
+    if (g_mood == Mood::Idle || g_mood == Mood::Waiting) {
         if (g_blinkElapsed >= 0) {
             g_blinkElapsed += deltaTime;
             double duration = g_doubleBlink ? 0.31 : 0.13;
@@ -1339,6 +1474,26 @@ void TickAnimation() {
         g_blinkElapsed = -1;
     }
 
+    if (g_mood == Mood::Waiting) {
+        if (g_waitingMotion != WaitingMotion::None) {
+            g_waitingMotionAge += deltaTime;
+            g_waitingMotionRemaining -= deltaTime;
+            if (g_waitingMotionRemaining <= 0) {
+                g_waitingMotion = WaitingMotion::None;
+                g_nextWaitingMotion = RandomDouble(1.8, 4.5);
+            }
+        } else {
+            g_nextWaitingMotion -= deltaTime;
+            if (g_nextWaitingMotion <= 0) {
+                g_waitingMotion = RandomInt(0, 1) == 0 ? WaitingMotion::Ear : WaitingMotion::Tail;
+                g_waitingMotionAge = 0;
+                g_waitingMotionRemaining = g_waitingMotion == WaitingMotion::Ear ? 0.38 : 0.72;
+            }
+        }
+    } else {
+        g_waitingMotion = WaitingMotion::None;
+    }
+
     g_messageRemaining -= deltaTime;
     if (g_messageRemaining <= 0) {
         g_message.clear();
@@ -1355,7 +1510,18 @@ void TickAnimation() {
     );
 
     if (!g_paused && g_visible && !g_dragging) {
-        if (g_mood == Mood::Walking && g_hasTarget) {
+        double waitingTimeoutSeconds = static_cast<double>(g_waitingTimeoutMinutes) * 60;
+        if (waitingTimeoutSeconds > 0 && !g_requestInFlight &&
+            g_inactivitySeconds >= waitingTimeoutSeconds && g_mood != Mood::Waiting) {
+            g_mood = Mood::Waiting;
+            g_hasTarget = false;
+            g_waitingMotion = WaitingMotion::None;
+            g_nextWaitingMotion = RandomDouble(1.2, 2.8);
+        }
+
+        if (g_mood == Mood::Waiting) {
+            // Stay seated until the next user interaction.
+        } else if (g_mood == Mood::Walking && g_hasTarget) {
             RECT windowRect{};
             GetWindowRect(g_window, &windowRect);
             double distance = g_targetX - windowRect.left;
@@ -1400,6 +1566,7 @@ void ToggleVisibility() {
 }
 
 void HandleMenuCommand(UINT command) {
+    RecordUserInteraction();
     switch (command) {
         case kMenuDeepSeekChat:
             StartDeepSeekChat();
@@ -1407,6 +1574,19 @@ void HandleMenuCommand(UINT command) {
         case kMenuDeepSeekSettings:
             if (ShowDeepSeekSettings() && !ReadDeepSeekApiKey().empty()) {
                 ShowSpeechBubble(L"DeepSeek 已配置好啦！连续点我三次就能聊天。", 7);
+            }
+            break;
+        case kMenuWaitingSettings:
+            if (ShowWaitingSettings()) {
+                if (g_waitingTimeoutMinutes == 0) {
+                    ShowSpeechBubble(L"自动等待召唤已关闭。", 5);
+                } else {
+                    ShowSpeechBubble(
+                        L"好哒，" + std::to_wstring(g_waitingTimeoutMinutes) +
+                            L" 分钟没人理我，我就蹲下等你。",
+                        6
+                    );
+                }
             }
             break;
         case kMenuCall:
@@ -1445,6 +1625,7 @@ void ShowTrayMenu() {
     HMENU menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING, kMenuDeepSeekChat, L"开始 AI 对话...");
     AppendMenuW(menu, MF_STRING, kMenuDeepSeekSettings, L"设置 DeepSeek API...");
+    AppendMenuW(menu, MF_STRING, kMenuWaitingSettings, L"设置等待时间...");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kMenuCall, L"呼唤小狗");
     AppendMenuW(menu, MF_STRING, kMenuPause, g_paused ? L"继续活动" : L"暂停活动");
@@ -1521,7 +1702,12 @@ bool LoadPetFrames() {
     g_walkImages[1] = LoadEmbeddedImage(IDR_SHIBA_WALK_2);
     g_walkImages[2] = LoadEmbeddedImage(IDR_SHIBA_WALK_3);
     g_walkImages[3] = LoadEmbeddedImage(IDR_SHIBA_WALK_4);
-    return g_dogImage && g_blinkImage && std::all_of(
+    g_waitingImage = LoadEmbeddedImage(IDR_SHIBA_WAITING);
+    g_waitingBlinkImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_BLINK);
+    g_waitingEarImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_EAR);
+    g_waitingTailImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_TAIL);
+    return g_dogImage && g_blinkImage && g_waitingImage && g_waitingBlinkImage &&
+        g_waitingEarImage && g_waitingTailImage && std::all_of(
         g_walkImages.begin(),
         g_walkImages.end(),
         [](const std::unique_ptr<Bitmap>& image) { return image != nullptr; }
@@ -1549,6 +1735,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             break;
         case WM_LBUTTONDOWN:
         case WM_LBUTTONDBLCLK: {
+            RecordUserInteraction();
             g_dragging = true;
             g_didDrag = false;
             GetCursorPos(&g_dragStartCursor);
@@ -1607,9 +1794,11 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             }
             break;
         case WM_RBUTTONUP:
+            RecordUserInteraction();
             ShowTrayMenu();
             return 0;
         case kTrayCallback:
+            RecordUserInteraction();
             if (lParam == WM_RBUTTONUP || lParam == WM_CONTEXTMENU) {
                 ShowTrayMenu();
             } else if (lParam == WM_LBUTTONDBLCLK) {
@@ -1677,6 +1866,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
 
     g_instance = instance;
+    g_waitingTimeoutMinutes = ReadWaitingTimeoutMinutes();
     g_richEditLibrary = LoadLibraryW(L"Msftedit.dll");
     SetProcessDPIAware();
     GdiplusStartupInput startupInput;
@@ -1761,6 +1951,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     g_dogImage.reset();
     g_blinkImage.reset();
+    g_waitingImage.reset();
+    g_waitingBlinkImage.reset();
+    g_waitingEarImage.reset();
+    g_waitingTailImage.reset();
     for (std::unique_ptr<Bitmap>& image : g_walkImages) {
         image.reset();
     }

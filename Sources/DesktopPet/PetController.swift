@@ -1,10 +1,14 @@
 import AppKit
 
 final class PetController: NSObject {
+    private static let waitingTimeoutDefaultsKey = "waitingTimeoutMinutes"
+    private static let defaultWaitingTimeoutMinutes = 3
+
     private(set) var isVisible = false
 
     var isPaused = false {
         didSet {
+            recordUserInteraction()
             mood = .idle
             nextDecisionAt = ProcessInfo.processInfo.systemUptime + 2
         }
@@ -15,6 +19,7 @@ final class PetController: NSObject {
     private let settingsStore = DeepSeekSettingsStore()
     private let deepSeekClient = DeepSeekClient()
     private let speechBubble = SpeechBubbleController()
+    private let chatInput = ChatInputController()
     private var timer: Timer?
     private var lastTick = ProcessInfo.processInfo.systemUptime
     private var nextDecisionAt = ProcessInfo.processInfo.systemUptime + 2
@@ -23,6 +28,7 @@ final class PetController: NSObject {
     private var bubbleDismissAt: TimeInterval?
     private var conversationHistory: [DeepSeekMessage] = []
     private var isRequestInFlight = false
+    private var lastInteractionAt = ProcessInfo.processInfo.systemUptime
     private var mood: PetMood = .idle {
         didSet { petView.mood = mood }
     }
@@ -60,6 +66,9 @@ final class PetController: NSObject {
         petView.onContextMenu = { [weak self] event in
             self?.showContextMenu(with: event)
         }
+        petView.onInteraction = { [weak self] in
+            self?.recordUserInteraction()
+        }
 
         resetPosition(animated: false)
         startTimer()
@@ -70,17 +79,20 @@ final class PetController: NSObject {
     }
 
     func show() {
+        recordUserInteraction()
         window.orderFrontRegardless()
         isVisible = true
     }
 
     func hide() {
+        recordUserInteraction()
         window.orderOut(nil)
         speechBubble.hide()
         isVisible = false
     }
 
     func callPet() {
+        recordUserInteraction()
         show()
         resetPosition(animated: true)
         petView.showAffection()
@@ -93,6 +105,7 @@ final class PetController: NSObject {
     }
 
     @objc func configureDeepSeek() {
+        recordUserInteraction()
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "DeepSeek 设置"
@@ -146,6 +159,7 @@ final class PetController: NSObject {
     }
 
     @objc func startDeepSeekChat() {
+        recordUserInteraction()
         guard !isRequestInFlight else {
             showSpeech("我还在想上一条问题，请稍等一下～", duration: 5)
             return
@@ -156,24 +170,41 @@ final class PetController: NSObject {
             return startDeepSeekChat()
         }
 
+        guard let question = chatInput.prompt(on: window.screen) else { return }
+        sendToDeepSeek(question)
+    }
+
+    @objc func configureWaiting() {
+        recordUserInteraction()
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "和桌面小柴聊聊"
-        alert.informativeText = "输入内容后按回车发送给 DeepSeek。"
-        let inputField = NSTextField(frame: CGRect(x: 0, y: 0, width: 380, height: 26))
-        inputField.placeholderString = "想问小柴什么？"
+        alert.messageText = "等待召唤设置"
+        alert.informativeText = "连续多少分钟没有互动后，让小柴蹲坐等待？填写 0 可关闭。"
+        let inputField = NSTextField(frame: CGRect(x: 0, y: 0, width: 260, height: 26))
+        inputField.stringValue = String(waitingTimeoutMinutes)
+        inputField.placeholderString = "分钟数（0–1440）"
         alert.accessoryView = inputField
-        alert.addButton(withTitle: "发送")
+        alert.addButton(withTitle: "保存")
         alert.addButton(withTitle: "取消")
         alert.window.initialFirstResponder = inputField
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        let question = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty else { return }
-        sendToDeepSeek(question)
+        let value = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let minutes = Int(value), (0...1440).contains(minutes) else {
+            showSpeech("请输入 0 到 1440 之间的整数分钟。", duration: 6)
+            return
+        }
+        UserDefaults.standard.set(minutes, forKey: Self.waitingTimeoutDefaultsKey)
+        recordUserInteraction()
+        if minutes == 0 {
+            showSpeech("自动等待召唤已关闭。", duration: 5)
+        } else {
+            showSpeech("好哒，\(minutes) 分钟没人理我，我就蹲下等你。", duration: 6)
+        }
     }
 
     func setPetSize(_ size: CGFloat) {
+        recordUserInteraction()
         let clampedSize = min(max(size, 120), 280)
         UserDefaults.standard.set(Int(clampedSize), forKey: "petSize")
 
@@ -192,6 +223,7 @@ final class PetController: NSObject {
     }
 
     func resetPosition(animated: Bool) {
+        recordUserInteraction()
         guard let screen = preferredScreen() else { return }
         let visibleFrame = screen.visibleFrame
         let destination = CGPoint(
@@ -233,6 +265,15 @@ final class PetController: NSObject {
         }
 
         guard !isPaused, isVisible else { return }
+
+        let timeout = TimeInterval(waitingTimeoutMinutes * 60)
+        if timeout > 0, !isRequestInFlight, now - lastInteractionAt >= timeout {
+            if mood != .waiting {
+                targetX = nil
+                mood = .waiting
+            }
+            return
+        }
 
         if mood == .walking, let targetX {
             let step = PetMotion.step(
@@ -276,6 +317,7 @@ final class PetController: NSObject {
     }
 
     private func finishDragging() {
+        recordUserInteraction()
         clampToVisibleScreen()
         targetX = nil
         mood = .idle
@@ -297,6 +339,7 @@ final class PetController: NSObject {
     }
 
     private func showContextMenu(with event: NSEvent) {
+        recordUserInteraction()
         let menu = NSMenu(title: "桌面小柴")
         let chatItem = NSMenuItem(title: "开始 AI 对话…", action: #selector(startDeepSeekChat), keyEquivalent: "")
         chatItem.target = self
@@ -304,6 +347,9 @@ final class PetController: NSObject {
         let settingsItem = NSMenuItem(title: "设置 DeepSeek API…", action: #selector(configureDeepSeek), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
+        let waitingItem = NSMenuItem(title: "设置等待时间…", action: #selector(configureWaiting), keyEquivalent: "")
+        waitingItem.target = self
+        menu.addItem(waitingItem)
         menu.addItem(.separator())
         let resetItem = NSMenuItem(title: "回到屏幕右下角", action: #selector(contextResetPosition), keyEquivalent: "")
         resetItem.target = self
@@ -359,11 +405,40 @@ final class PetController: NSObject {
         showSpeech("出错了：\(error.localizedDescription)", duration: 15)
     }
 
+    private func recordUserInteraction() {
+        let now = ProcessInfo.processInfo.systemUptime
+        lastInteractionAt = now
+        if mood == .waiting {
+            mood = .idle
+            targetX = nil
+            nextDecisionAt = now + 1.5
+        }
+    }
+
+    private var waitingTimeoutMinutes: Int {
+        if UserDefaults.standard.object(forKey: Self.waitingTimeoutDefaultsKey) == nil {
+            return Self.defaultWaitingTimeoutMinutes
+        }
+        return min(max(UserDefaults.standard.integer(forKey: Self.waitingTimeoutDefaultsKey), 0), 1440)
+    }
+
     private static func loadPetFrames() -> PetFrames {
         let idle = loadImage(named: "shiba") ?? fallbackImage()
         let blink = loadImage(named: "shiba-blink-v2") ?? idle
         let walking = (1...4).compactMap { loadImage(named: "shiba-walk-\($0)-v2") }
-        return PetFrames(idle: idle, blink: blink, walking: walking)
+        let waiting = loadImage(named: "shiba-waiting") ?? idle
+        let waitingBlink = loadImage(named: "shiba-waiting-blink") ?? waiting
+        let waitingEar = loadImage(named: "shiba-waiting-ear") ?? waiting
+        let waitingTail = loadImage(named: "shiba-waiting-tail") ?? waiting
+        return PetFrames(
+            idle: idle,
+            blink: blink,
+            walking: walking,
+            waiting: waiting,
+            waitingBlink: waitingBlink,
+            waitingEar: waitingEar,
+            waitingTail: waitingTail
+        )
     }
 
     private static func loadImage(named name: String) -> NSImage? {

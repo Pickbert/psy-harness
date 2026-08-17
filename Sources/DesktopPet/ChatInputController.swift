@@ -1,0 +1,194 @@
+import AppKit
+
+private final class ChatInputPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+final class ChatInputController: NSObject, NSTextFieldDelegate {
+    private let panel: ChatInputPanel
+    private let inputField = NSTextField()
+    private var submittedText: String?
+
+    override init() {
+        panel = ChatInputPanel(
+            contentRect: CGRect(x: 0, y: 0, width: 640, height: 108),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        super.init()
+        configurePanel()
+    }
+
+    func prompt(on screen: NSScreen?) -> String? {
+        if panel.isVisible {
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+            panel.makeFirstResponder(inputField)
+            return nil
+        }
+
+        submittedText = nil
+        inputField.stringValue = ""
+        position(on: screen ?? NSScreen.main ?? NSScreen.screens.first)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(inputField)
+        let response = NSApp.runModal(for: panel)
+        panel.orderOut(nil)
+        return response == .OK ? submittedText : nil
+    }
+
+    private func configurePanel() {
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.animationBehavior = .utilityWindow
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.title = "和桌面小柴聊聊"
+        panel.setAccessibilityTitle("和桌面小柴聊聊")
+
+        let background = NSVisualEffectView()
+        background.translatesAutoresizingMaskIntoConstraints = false
+        background.material = .hudWindow
+        background.blendingMode = .behindWindow
+        background.state = .active
+        background.appearance = NSAppearance(named: .darkAqua)
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 17
+        background.layer?.cornerCurve = .continuous
+        background.layer?.borderWidth = 1
+        background.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        background.layer?.masksToBounds = true
+
+        let accent = NSView()
+        accent.translatesAutoresizingMaskIntoConstraints = false
+        accent.wantsLayer = true
+        accent.layer?.backgroundColor = NSColor.systemOrange.withAlphaComponent(0.9).cgColor
+        accent.layer?.cornerRadius = 1.5
+
+        inputField.translatesAutoresizingMaskIntoConstraints = false
+        inputField.delegate = self
+        inputField.isBezeled = false
+        inputField.drawsBackground = false
+        inputField.focusRingType = .none
+        inputField.font = .systemFont(ofSize: 25, weight: .medium)
+        inputField.textColor = .white
+        inputField.maximumNumberOfLines = 1
+        inputField.lineBreakMode = .byTruncatingTail
+        inputField.placeholderAttributedString = NSAttributedString(
+            string: "想问桌面小柴什么？",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 25, weight: .regular),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.38)
+            ]
+        )
+        inputField.setAccessibilityLabel("DeepSeek 对话输入")
+        inputField.setAccessibilityHelp("输入内容后按回车发送，按 Escape 取消")
+
+        let hintLabel = NSTextField(labelWithString: "↵ 发送    esc 取消    DeepSeek")
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        hintLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        hintLabel.textColor = NSColor.white.withAlphaComponent(0.42)
+
+        let iconView = NSImageView()
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.image = Self.chatIcon()
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.setAccessibilityLabel("桌面小柴")
+
+        guard let contentView = panel.contentView else { return }
+        contentView.addSubview(background)
+        background.addSubview(accent)
+        background.addSubview(inputField)
+        background.addSubview(hintLabel)
+        background.addSubview(iconView)
+
+        NSLayoutConstraint.activate([
+            background.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            background.topAnchor.constraint(equalTo: contentView.topAnchor),
+            background.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+
+            accent.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 20),
+            accent.topAnchor.constraint(equalTo: background.topAnchor, constant: 20),
+            accent.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -20),
+            accent.widthAnchor.constraint(equalToConstant: 3),
+
+            iconView.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -18),
+            iconView.centerYAnchor.constraint(equalTo: background.centerYAnchor, constant: -1),
+            iconView.widthAnchor.constraint(equalToConstant: 72),
+            iconView.heightAnchor.constraint(equalToConstant: 72),
+
+            inputField.leadingAnchor.constraint(equalTo: accent.trailingAnchor, constant: 17),
+            inputField.trailingAnchor.constraint(equalTo: iconView.leadingAnchor, constant: -18),
+            inputField.topAnchor.constraint(equalTo: background.topAnchor, constant: 22),
+            inputField.heightAnchor.constraint(equalToConstant: 40),
+
+            hintLabel.leadingAnchor.constraint(equalTo: inputField.leadingAnchor, constant: 2),
+            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: iconView.leadingAnchor, constant: -18),
+            hintLabel.topAnchor.constraint(equalTo: inputField.bottomAnchor, constant: 7)
+        ])
+    }
+
+    private func position(on screen: NSScreen?) {
+        guard let screen else {
+            panel.center()
+            return
+        }
+        let visibleFrame = screen.visibleFrame
+        let origin = CGPoint(
+            x: visibleFrame.midX - panel.frame.width / 2,
+            y: visibleFrame.maxY - panel.frame.height - max(72, visibleFrame.height * 0.12)
+        )
+        panel.setFrameOrigin(origin)
+    }
+
+    private func submit() {
+        let value = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        submittedText = value
+        NSApp.stopModal(withCode: .OK)
+    }
+
+    private func cancel() {
+        submittedText = nil
+        NSApp.stopModal(withCode: .cancel)
+    }
+
+    func control(
+        _ control: NSControl,
+        textView: NSTextView,
+        doCommandBy commandSelector: Selector
+    ) -> Bool {
+        switch commandSelector {
+        case #selector(NSResponder.insertNewline(_:)):
+            submit()
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            cancel()
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func chatIcon() -> NSImage? {
+        if let url = Bundle.main.url(forResource: "shiba-chat-icon", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        if let url = Bundle.module.url(forResource: "shiba-chat-icon", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        return NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "桌面小柴")
+    }
+}

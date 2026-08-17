@@ -9,6 +9,10 @@ IDR_SHIBA_WALK_1 RCDATA "Sources/DesktopPet/Resources/shiba-walk-1-v2.png"
 IDR_SHIBA_WALK_2 RCDATA "Sources/DesktopPet/Resources/shiba-walk-2-v2.png"
 IDR_SHIBA_WALK_3 RCDATA "Sources/DesktopPet/Resources/shiba-walk-3-v2.png"
 IDR_SHIBA_WALK_4 RCDATA "Sources/DesktopPet/Resources/shiba-walk-4-v2.png"
+IDR_SHIBA_WAITING RCDATA "Sources/DesktopPet/Resources/shiba-waiting.png"
+IDR_SHIBA_WAITING_BLINK RCDATA "Sources/DesktopPet/Resources/shiba-waiting-blink.png"
+IDR_SHIBA_WAITING_EAR RCDATA "Sources/DesktopPet/Resources/shiba-waiting-ear.png"
+IDR_SHIBA_WAITING_TAIL RCDATA "Sources/DesktopPet/Resources/shiba-waiting-tail.png"
 IDI_APP_ICON ICON "windows/shiba-icon.ico"
 1 RT_MANIFEST "windows/app.manifest"
 
@@ -37,9 +41,21 @@ BEGIN
     PUSHBUTTON      "取消", IDCANCEL, 250, 55, 44, 15
 END
 
+IDD_WAITING_SETTINGS DIALOGEX 0, 0, 264, 88
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "等待召唤设置"
+FONT 9, "Microsoft YaHei UI"
+BEGIN
+    LTEXT           "连续无交互多少分钟后，让小柴蹲坐等待？", -1, 10, 10, 244, 12
+    EDITTEXT        IDC_WAITING_MINUTES, 10, 27, 244, 17, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT           "填写 0 可关闭；允许范围 0–1440 分钟。", -1, 10, 49, 244, 12
+    DEFPUSHBUTTON   "保存", IDOK, 158, 66, 46, 15
+    PUSHBUTTON      "取消", IDCANCEL, 210, 66, 44, 15
+END
+
 1 VERSIONINFO
- FILEVERSION 0,2,0,0
- PRODUCTVERSION 0,2,0,0
+ FILEVERSION 0,3,0,0
+ PRODUCTVERSION 0,3,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -56,11 +72,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "DesktopPet"
             VALUE "FileDescription", "桌面小柴 - Windows 桌面宠物"
-            VALUE "FileVersion", "0.2.0"
+            VALUE "FileVersion", "0.3.0"
             VALUE "InternalName", "DesktopPet"
             VALUE "OriginalFilename", "DesktopPet-Windows-x64.exe"
             VALUE "ProductName", "桌面小柴"
-            VALUE "ProductVersion", "0.2.0"
+            VALUE "ProductVersion", "0.3.0"
         END
     END
     BLOCK "VarFileInfo"
