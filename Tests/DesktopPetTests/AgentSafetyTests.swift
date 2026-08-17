@@ -18,6 +18,22 @@ final class AgentSafetyTests: XCTestCase {
         XCTAssertFalse(AgentProcessManager.isDangerous(write, workspace: workspace))
     }
 
+    func testWriteContentIsNotMistakenForAShellCommand() {
+        let css = AgentApprovalRequest(
+            requestID: "1", sessionID: "s", callID: "c", toolName: "write",
+            reason: nil,
+            arguments: #"{"file_path":"game.html","content":".cell { transform: scale(1.06); }"}"#
+        )
+        let prose = AgentApprovalRequest(
+            requestID: "2", sessionID: "s", callID: "c", toolName: "edit",
+            reason: nil,
+            arguments: #"{"path":"notes.md","content":"Never run sudo or rm here."}"#
+        )
+
+        XCTAssertFalse(AgentProcessManager.isDangerous(css, workspace: workspace))
+        XCTAssertFalse(AgentProcessManager.isDangerous(prose, workspace: workspace))
+    }
+
     func testDeleteAndElevatedCommandsAreRejected() {
         let delete = AgentApprovalRequest(
             requestID: "1", sessionID: "s", callID: "c", toolName: "bash",
@@ -30,6 +46,31 @@ final class AgentSafetyTests: XCTestCase {
 
         XCTAssertTrue(AgentProcessManager.isDangerous(delete, workspace: workspace))
         XCTAssertTrue(AgentProcessManager.isDangerous(elevated, workspace: workspace))
+    }
+
+    func testShellCommandMatchingUsesCommandBoundaries() {
+        let harmless = AgentApprovalRequest(
+            requestID: "1", sessionID: "s", callID: "c", toolName: "bash",
+            reason: nil,
+            arguments: #"{"command":"printf 'transform scale' > game.css"}"#
+        )
+        let chainedDelete = AgentApprovalRequest(
+            requestID: "2", sessionID: "s", callID: "c", toolName: "bash",
+            reason: nil,
+            arguments: #"{"command":"touch game.css && rm game.css"}"#
+        )
+
+        XCTAssertFalse(AgentProcessManager.isDangerous(harmless, workspace: workspace))
+        XCTAssertTrue(AgentProcessManager.isDangerous(chainedDelete, workspace: workspace))
+    }
+
+    func testMalformedShellArgumentsFailClosed() {
+        let malformed = AgentApprovalRequest(
+            requestID: "1", sessionID: "s", callID: "c", toolName: "bash",
+            reason: nil, arguments: "not-json"
+        )
+
+        XCTAssertTrue(AgentProcessManager.isDangerous(malformed, workspace: workspace))
     }
 
     func testStructuredPathsCannotEscapeWorkspace() {

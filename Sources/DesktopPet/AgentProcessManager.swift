@@ -575,15 +575,34 @@ final class AgentProcessManager {
     }
 
     static func isDangerous(_ request: AgentApprovalRequest, workspace: URL? = nil) -> Bool {
-        let raw = "\(request.toolName) \(request.arguments ?? "")".lowercased()
-        let blockedFragments = [
-            "rm ", "rm\"", "rmdir", "unlink", "delete", "trash", "sudo", "osascript",
-            "launchctl", "kill ", "pkill", "diskutil", "chmod -r", "chown", "security ",
-            "defaults write", "systemsetup", "shutdown", "reboot", "mkfs", "dd if="
-        ]
-        if blockedFragments.contains(where: { raw.contains($0) }) { return true }
+        let toolName = request.toolName.lowercased()
+        if toolName.contains("delete") || toolName.contains("remove") || toolName.contains("trash") {
+            return true
+        }
+        if toolName == "bash" || toolName == "shell" || toolName.contains("command") {
+            guard let command = shellCommand(from: request.arguments) else { return true }
+            if dangerousShellCommandRegex.firstMatch(
+                in: command,
+                range: NSRange(command.startIndex..., in: command)
+            ) != nil {
+                return true
+            }
+        }
         guard let workspace, let arguments = request.arguments else { return false }
         return containsOutOfWorkspacePath(arguments: arguments, workspace: workspace)
+    }
+
+    private static let dangerousShellCommandRegex = try! NSRegularExpression(
+        pattern: #"(^|[\s;&|])(rm|rmdir|unlink|shred|truncate|sudo|doas|osascript|launchctl|kill|pkill|diskutil|security|printenv|env|set|export|declare|systemsetup|shutdown|reboot|mkfs|dd|chown)(?=$|[\s;&|])|(^|[\s;&|])defaults\s+write(?=$|[\s;&|])|(^|[\s;&|])chmod\s+-[^\s;&|]*[rR][^\s;&|]*(?=$|[\s;&|])"#,
+        options: .caseInsensitive
+    )
+
+    private static func shellCommand(from arguments: String?) -> String? {
+        guard let arguments,
+              let data = arguments.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return (object["command"] as? String) ?? (object["script"] as? String)
     }
 
     static func containsOutOfWorkspacePath(arguments: String, workspace: URL) -> Bool {
