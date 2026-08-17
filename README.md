@@ -23,6 +23,7 @@
 - DeepSeek 回复以小狗对话气泡展示，并保留最近 6 轮上下文
 - Apple Silicon + macOS 14 及以上可启用本地 DeepSeek Harness Agent，读取文件、修改项目和运行命令
 - Agent 使用用户选择的独立工作目录；写入和命令必须逐次点击“允许一次”，高风险和越界操作直接拒绝
+- “插件与技能”设置直接控制 Harness Cordis 插件，可启用本地 Skill、任务清单、长期目标和 DeepSeek 网页搜索
 - 记忆上次选择的小狗尺寸
 - 普通宠物功能不需要网络；AI 对话需要用户自己的 DeepSeek API Key
 
@@ -90,6 +91,10 @@ Agent 是 App 内独立的预编译 sidecar，不从 TypeScript 源码启动，�
 DeepSeek V4 的模型上下文由 Harness 按 `1,000,000` Token 管理，与单轮最大输出分开。若服务端仍以 `max-tokens` 结束，App 会保留已收到的部分内容并明确标记为不完整，不再误报任务成功。长内容流式显示时，气泡会跟随最新输出滚动。
 
 Agent 调用工具时，跟随小狗的气泡顶部会显示无确定进度的旋转指示器和当前工具名称；等待审批、执行成功和执行失败会显示对应状态。Harness 暂未提供工具执行百分比，因此界面不会伪造百分比进度。
+
+“本地 Agent → 插件与技能…”提供经过审核的 Harness 插件白名单。默认启用本地技能库和 `todo_write`，长期目标与 DeepSeek 网页搜索可按需开启；搜索复用钥匙串中的 DeepSeek API Key，但会产生额外模型调用和 Token 消耗。保存后 App 会重启 sidecar，并通过 `desktopPet/plugins/list` 读取 Harness 的真实工具注册表显示生效状态，而不是仅显示前端开关。
+
+本地技能位于所选工作目录的 `.desktop-pet/skills`，支持 `<name>/SKILL.md` 和平铺 Markdown。该目录仍位于 `workspace-write` 沙箱内，App 不会扫描 `~/.agents`、`~/.dsh` 或其他用户级技能目录。外部 npm/GitHub 插件不会在运行时下载执行；需要固定版本、审计并重新构建 sidecar。
 
 安全策略为 `workspace-write + ask`：读取所选目录可自动进行，写入和命令会显示审批卡，只能“允许一次”或“拒绝”；删除、提权、明显破坏性命令和结构化越界路径会直接拒绝。停止任务会终止并重新启动 sidecar，未完成审批按拒绝处理。
 

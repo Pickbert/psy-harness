@@ -47,6 +47,18 @@ export interface HarnessSdkJsonRpcServerOptions {
   desktopPetPolicy?: boolean
 }
 
+export interface DesktopPetPluginSnapshot {
+  /** Names registered in the live Harness tool registry after Cordis composition. */
+  toolNames: string[]
+  /** Skills discovered by the live provider for the initialized workspace. */
+  skillNames: string[]
+}
+
+interface DesktopPetSkillSummary {
+  name: string
+  invocation: { modelInvocable: boolean }
+}
+
 const DESTRUCTIVE_COMMAND = /(^|[\s;&|])(rm|rmdir|unlink|shred|truncate|sudo|doas|osascript|launchctl|kill|pkill|diskutil|shutdown|reboot|mkfs|dd|printenv|env|set|export|declare)([\s;&|]|$)/i
 
 export function desktopPetPreToolDecision(exec: ToolExecution, cwd: string): PreToolDecision | undefined {
@@ -234,6 +246,27 @@ export class HarnessSdkJsonRpcServer {
   }
 
   /**
+   * Return the live model-tool registry used by DesktopPet's plugin settings.
+   * The result comes from the booted Cordis tree rather than launch flags, so a
+   * missing or failed plugin can never be reported as active merely because it
+   * was requested in the environment.
+   */
+  async desktopPetPlugins(): Promise<DesktopPetPluginSnapshot> {
+    if (this.options.desktopPetPolicy !== true) {
+      throw new Error('desktopPet/plugins/list is unavailable outside a DesktopPet deployment')
+    }
+    const toolNames = (this.ctx.get('tools')?.schemas() ?? [])
+      .map(tool => tool.name)
+      .sort((left, right) => left.localeCompare(right))
+    const skills = (await this.ctx.get('skills')?.list({ cwd: this.cwd }) ?? []) as DesktopPetSkillSummary[]
+    const skillNames = skills
+      .filter(skill => skill.invocation.modelInvocable)
+      .map(skill => skill.name)
+      .sort((left, right) => left.localeCompare(right))
+    return { toolNames, skillNames }
+  }
+
+  /**
    * Dispose server-owned agents, adapter, and subscriptions to quiescence.
    * The surrounding context remains running.
    * @returns empty JSON-RPC result.
@@ -284,6 +317,8 @@ export class HarnessSdkJsonRpcServer {
         return this.initialize(params as unknown as InitializeParams)
       case 'session/prompt':
         return this.prompt(params as unknown as SessionPromptParams)
+      case 'desktopPet/plugins/list':
+        return this.desktopPetPlugins()
       case 'shutdown':
         return this.shutdown()
       default:

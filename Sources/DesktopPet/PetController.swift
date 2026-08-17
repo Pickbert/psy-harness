@@ -21,9 +21,11 @@ final class PetController: NSObject {
     private let deepSeekClient = DeepSeekClient()
     private let agentManager = AgentProcessManager()
     private let agentWorkspaceStore = AgentWorkspaceStore()
+    private let agentPluginStore = AgentPluginSettingsStore()
     private let agentPanel = AgentTaskPanelController()
     private let speechBubble = SpeechBubbleController()
     private let chatInput = ChatInputController()
+    private lazy var agentPluginSettingsController = AgentPluginSettingsController(store: agentPluginStore)
     private var timer: Timer?
     private var lastTick = ProcessInfo.processInfo.systemUptime
     private var nextDecisionAt = ProcessInfo.processInfo.systemUptime + 2
@@ -309,7 +311,8 @@ final class PetController: NSObject {
             workspace: workspace,
             apiKey: apiKey,
             model: settingsStore.selectedModel,
-            maxOutputTokens: settingsStore.agentMaxOutputTokens
+            maxOutputTokens: settingsStore.agentMaxOutputTokens,
+            plugins: agentPluginStore.configuration
         ) { [weak self] result in
             switch result {
             case .success:
@@ -323,10 +326,42 @@ final class PetController: NSObject {
     @objc func showAgentStatus() {
         recordUserInteraction()
         let workspace = agentWorkspaceStore.workspaceURL()?.path ?? "未选择工作目录"
+        let configured = agentPluginStore.configuration
+        let actual = AgentPluginID.allCases
+            .filter { agentManager.runtimePluginSnapshot?.isActive($0) == true }
+            .map(\.title)
+            .joined(separator: "、")
         showSpeech(
-            "\(agentManager.statusText)\n工作目录：\(workspace)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)",
+            "\(agentManager.statusText)\n工作目录：\(workspace)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n已配置：\(configured.displaySummary)\nHarness 实际启用：\(actual.isEmpty ? "未运行或无可选插件" : actual)",
             duration: 12
         )
+    }
+
+    @objc func configureAgentPlugins() {
+        recordUserInteraction()
+        guard AgentProcessManager.platformSupported else {
+            showSpeech("当前系统不启用本地 Agent 插件。", duration: 6)
+            return
+        }
+        guard !isRequestInFlight, !isAwaitingAgentApproval else {
+            showSpeech("请先等待当前 Agent 任务结束，再修改插件设置。", duration: 7)
+            return
+        }
+
+        let pluginWorkspace = agentWorkspaceStore.workspaceURL()
+        if let pluginWorkspace { activateSecurityScopedWorkspace(pluginWorkspace) }
+        agentPluginSettingsController.show(
+            configuration: agentPluginStore.configuration,
+            workspace: pluginWorkspace,
+            runtimeSnapshot: agentManager.runtimePluginSnapshot
+        ) { [weak self] configuration in
+            self?.applyAgentPluginConfiguration(configuration)
+        }
+        agentManager.refreshPluginStatus { [weak self] result in
+            if case let .success(snapshot) = result {
+                self?.agentPluginSettingsController.updateRuntimeSnapshot(snapshot)
+            }
+        }
     }
 
     @objc func configureWaiting() {
@@ -574,7 +609,8 @@ final class PetController: NSObject {
             workspace: workspace,
             apiKey: apiKey,
             model: settingsStore.selectedModel,
-            maxOutputTokens: settingsStore.agentMaxOutputTokens
+            maxOutputTokens: settingsStore.agentMaxOutputTokens,
+            plugins: agentPluginStore.configuration
         ) { [weak self] result in
             guard let self else { return }
             switch result {
@@ -694,6 +730,35 @@ final class PetController: NSObject {
         }
     }
 
+    private func applyAgentPluginConfiguration(_ configuration: AgentPluginConfiguration) {
+        agentPluginStore.save(configuration)
+        resetAgentSession()
+
+        guard let workspace = agentWorkspaceStore.workspaceURL(),
+              let apiKey = settingsStore.apiKey()
+        else {
+            showSpeech("插件设置已保存，将在下次启动 Agent 时生效。", duration: 7)
+            return
+        }
+
+        activateSecurityScopedWorkspace(workspace)
+        showSpeech("正在应用 Harness 插件设置…", duration: nil)
+        agentManager.start(
+            workspace: workspace,
+            apiKey: apiKey,
+            model: settingsStore.selectedModel,
+            maxOutputTokens: settingsStore.agentMaxOutputTokens,
+            plugins: configuration
+        ) { [weak self] result in
+            switch result {
+            case .success:
+                self?.showSpeech("插件设置已生效：\(configuration.displaySummary)", duration: 8)
+            case let .failure(error):
+                self?.showError(error)
+            }
+        }
+    }
+
     private func activateSecurityScopedWorkspace(_ workspace: URL) {
         if securityScopedWorkspace?.standardizedFileURL == workspace.standardizedFileURL { return }
         releaseSecurityScopedWorkspace()
@@ -728,6 +793,7 @@ final class PetController: NSObject {
             ("清除 Agent 工作目录", #selector(clearAgentWorkspace)),
             ("新建对话", #selector(newAgentConversation)),
             ("停止当前任务", #selector(stopAgentTask)),
+            ("插件与技能…", #selector(configureAgentPlugins)),
             ("重启 Agent", #selector(restartAgent)),
             ("查看 Agent 状态", #selector(showAgentStatus))
         ]

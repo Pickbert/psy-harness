@@ -50,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ("清除 Agent 工作目录", #selector(clearAgentWorkspace)),
                 ("新建对话", #selector(newAgentConversation)),
                 ("停止当前任务", #selector(stopAgentTask)),
+                ("插件与技能…", #selector(configureAgentPlugins)),
                 ("重启 Agent", #selector(restartAgent)),
                 ("查看 Agent 状态", #selector(showAgentStatus))
             ]
@@ -235,6 +236,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func restartAgent() {
         petController?.restartAgent()
+    }
+
+    @objc private func configureAgentPlugins() {
+        petController?.configureAgentPlugins()
     }
 
     @objc private func showAgentStatus() {

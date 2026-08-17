@@ -194,6 +194,31 @@ describe('HarnessSdkJsonRpcServer', () => {
     })
   })
 
+  it('reports DesktopPet plugin state from the live Harness tool registry', async () => {
+    const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-plugins-'))
+    const ctx = await makeHarness(storageDir)
+    try {
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport(), { desktopPetPolicy: true })
+      const snapshot = await server.handleRequest('desktopPet/plugins/list', {}) as {
+        toolNames: string[]
+        skillNames: string[]
+      }
+
+      expect(snapshot.toolNames).toContain('skill')
+      expect(snapshot.toolNames).toEqual([...snapshot.toolNames].sort((left, right) => left.localeCompare(right)))
+      expect(snapshot.skillNames).toEqual([...snapshot.skillNames].sort((left, right) => left.localeCompare(right)))
+
+      const ordinaryServer = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      await expect(ordinaryServer.handleRequest('desktopPet/plugins/list', {}))
+        .rejects.toThrow('unavailable outside a DesktopPet deployment')
+      await ordinaryServer.shutdown()
+      await server.shutdown()
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
   it('creates a harness agent and calls the configured OpenAI-compatible endpoint', { timeout: 15_000 }, async () => {
     const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-'))
     const llmServer = await mockCompletionServer()

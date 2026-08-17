@@ -84,6 +84,7 @@ final class AgentProcessManager {
         let apiKey: String
         let model: DeepSeekModel
         let maxOutputTokens: Int
+        let plugins: AgentPluginConfiguration
     }
 
     private let queue = DispatchQueue(label: "com.local.desktoppet.agent-process")
@@ -109,6 +110,7 @@ final class AgentProcessManager {
     private var finalText = ""
     private var lastTurnError: String?
     private var lastTurnFailureKind: String?
+    private var pluginSnapshot: AgentRuntimePluginSnapshot?
 
     var statusText: String {
         queue.sync {
@@ -118,11 +120,16 @@ final class AgentProcessManager {
         }
     }
 
+    var runtimePluginSnapshot: AgentRuntimePluginSnapshot? {
+        queue.sync { pluginSnapshot }
+    }
+
     func start(
         workspace: URL,
         apiKey: String,
         model: DeepSeekModel,
         maxOutputTokens: Int,
+        plugins: AgentPluginConfiguration,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         queue.async {
@@ -139,7 +146,8 @@ final class AgentProcessManager {
                self.launchConfiguration?.workspace.standardizedFileURL == workspace.standardizedFileURL,
                self.launchConfiguration?.apiKey == apiKey,
                self.launchConfiguration?.model == model,
-               self.launchConfiguration?.maxOutputTokens == normalizedMaxOutputTokens {
+               self.launchConfiguration?.maxOutputTokens == normalizedMaxOutputTokens,
+               self.launchConfiguration?.plugins == plugins {
                 self.completeOnMain(completion, with: .success(()))
                 return
             }
@@ -148,7 +156,8 @@ final class AgentProcessManager {
                 workspace: workspace.standardizedFileURL,
                 apiKey: apiKey,
                 model: model,
-                maxOutputTokens: normalizedMaxOutputTokens
+                maxOutputTokens: normalizedMaxOutputTokens,
+                plugins: plugins
             )
             self.launchConfiguration = config
             do {
@@ -253,6 +262,20 @@ final class AgentProcessManager {
         }
     }
 
+    func refreshPluginStatus(
+        completion: @escaping (Result<AgentRuntimePluginSnapshot, Error>) -> Void
+    ) {
+        queue.async {
+            guard self.ready, self.process?.isRunning == true else {
+                self.completeOnMain(completion, with: .failure(AgentRuntimeError.notReady))
+                return
+            }
+            self.requestPluginSnapshotLocked { result in
+                self.completeOnMain(completion, with: result)
+            }
+        }
+    }
+
     private func launchLocked(
         config: LaunchConfiguration,
         completion: @escaping (Result<Void, Error>) -> Void
@@ -265,6 +288,10 @@ final class AgentProcessManager {
         else { throw AgentRuntimeError.configurationMissing }
 
         let sessionRoot = try Self.sessionRootURL()
+        let pluginStore = AgentPluginSettingsStore()
+        let skillDirectory = config.plugins.isEnabled(.skills)
+            ? try pluginStore.ensureSkillDirectory(in: config.workspace)
+            : pluginStore.skillDirectoryURL(in: config.workspace)
         let systemPrompt = try String(contentsOf: promptURL, encoding: .utf8)
         let child = Process()
         let stdinPipe = Pipe()
@@ -275,7 +302,7 @@ final class AgentProcessManager {
         child.standardInput = stdinPipe
         child.standardOutput = stdoutPipe
         child.standardError = stderrPipe
-        child.environment = [
+        var environment = [
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
             "HOME": NSHomeDirectory(),
             "TMPDIR": NSTemporaryDirectory(),
@@ -287,6 +314,11 @@ final class AgentProcessManager {
             "DSH_SYSTEM_PROMPT": systemPrompt,
             "DSH_TELEMETRY_MODE": "DISABLED"
         ]
+        environment.merge(
+            config.plugins.processEnvironment(skillDirectory: skillDirectory),
+            uniquingKeysWith: { _, new in new }
+        )
+        child.environment = environment
 
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -320,11 +352,37 @@ final class AgentProcessManager {
             case .success:
                 self.ready = true
                 self.restartedAfterCrash = false
-                self.emitActivity("Agent 已连接：\(config.workspace.lastPathComponent)")
-                self.completeOnMain(completion, with: .success(()))
+                self.requestPluginSnapshotLocked { snapshotResult in
+                    if case let .failure(error) = snapshotResult {
+                        self.emitActivity("插件状态读取失败：\(error.localizedDescription)")
+                    }
+                    self.emitActivity("Agent 已连接：\(config.workspace.lastPathComponent)")
+                    self.completeOnMain(completion, with: .success(()))
+                }
             case let .failure(error):
                 self.stopLocked(notifyActive: false)
                 self.completeOnMain(completion, with: .failure(error))
+            }
+        }
+    }
+
+    private func requestPluginSnapshotLocked(
+        completion: @escaping (Result<AgentRuntimePluginSnapshot, Error>) -> Void
+    ) {
+        sendRequestLocked(method: "desktopPet/plugins/list", params: [:]) { result in
+            switch result {
+            case let .success(payload):
+                guard let snapshot = AgentRuntimePluginSnapshot(json: payload) else {
+                    completion(.failure(AgentRuntimeError.protocolError(
+                        "desktopPet/plugins/list 返回了无效数据"
+                    )))
+                    return
+                }
+                self.pluginSnapshot = snapshot
+                completion(.success(snapshot))
+            case let .failure(error):
+                self.pluginSnapshot = nil
+                completion(.failure(error))
             }
         }
     }
@@ -561,6 +619,7 @@ final class AgentProcessManager {
         outputFramer.reset()
         toolCalls.removeAll()
         activeToolCallID = nil
+        pluginSnapshot = nil
         emitToolExecutionState(.idle)
     }
 

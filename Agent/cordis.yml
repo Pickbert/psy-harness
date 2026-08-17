@@ -52,10 +52,15 @@
     workspaceContext:
       maxBytes: 65536
     skills:
-      enabled: false
+      enabled: !!js process.env.DSH_PLUGIN_SKILLS === '1'
+      filesystem:
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js process.env.DSH_SKILL_DIR
     toolBash:
       enableRunInBackground: false
     toolJobs: false
+    goals: !!js "process.env.DSH_PLUGIN_GOALS === '1' ? {} : false"
 
 - id: fs-sandbox
   name: '@deepseek-ai/dsh-fs-sandbox'
@@ -67,6 +72,35 @@
 
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  disabled: !!js process.env.DSH_PLUGIN_TODO !== '1'
+  config:
+    allowParallelInProgress: false
+
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  disabled: !!js process.env.DSH_PLUGIN_WEB_SEARCH !== '1'
+  config:
+    searchProvider: deepseek-official
+
+- id: web-search-deepseek
+  name: '@deepseek-ai/dsh-web-search-deepseek'
+  disabled: !!js process.env.DSH_PLUGIN_WEB_SEARCH !== '1'
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+
+- id: tool-call-timeout-policy
+  name: '@deepseek-ai/dsh-tool-call-timeout-policy'
+  disabled: !!js process.env.DSH_PLUGIN_WEB_SEARCH !== '1'
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  disabled: !!js process.env.DSH_PLUGIN_WEB_SEARCH !== '1'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000
 
 - id: sessions
   name: '@deepseek-ai/dsh-session-persistence-jsonl'
