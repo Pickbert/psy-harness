@@ -14,9 +14,7 @@ IDR_SHIBA_WAITING_BLINK RCDATA "Sources/DesktopPet/Resources/shiba-waiting-blink
 IDR_SHIBA_WAITING_EAR RCDATA "Sources/DesktopPet/Resources/shiba-waiting-ear.png"
 IDR_SHIBA_WAITING_TAIL RCDATA "Sources/DesktopPet/Resources/shiba-waiting-tail.png"
 IDR_SHIBA_LIFT_1 RCDATA "Sources/DesktopPet/Resources/shiba-lift-1.png"
-IDR_SHIBA_LIFT_2 RCDATA "Sources/DesktopPet/Resources/shiba-lift-2.png"
-IDR_SHIBA_LIFT_3 RCDATA "Sources/DesktopPet/Resources/shiba-lift-3.png"
-IDR_SHIBA_LIFT_4 RCDATA "Sources/DesktopPet/Resources/shiba-lift-4.png"
+IDR_SHIBA_LIFT_BLINK RCDATA "Sources/DesktopPet/Resources/shiba-lift-blink.png"
 IDI_APP_ICON ICON "windows/shiba-icon.ico"
 1 RT_MANIFEST "windows/app.manifest"
 
@@ -58,8 +56,8 @@ BEGIN
 END
 
 1 VERSIONINFO
- FILEVERSION 0,4,13,0
- PRODUCTVERSION 0,4,13,0
+ FILEVERSION 0,4,14,0
+ PRODUCTVERSION 0,4,14,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -76,11 +74,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "DesktopPet"
             VALUE "FileDescription", "桌面小柴 - Windows 桌面宠物"
-            VALUE "FileVersion", "0.4.13"
+            VALUE "FileVersion", "0.4.14"
             VALUE "InternalName", "DesktopPet"
             VALUE "OriginalFilename", "DesktopPet-Windows-x64.exe"
             VALUE "ProductName", "桌面小柴"
-            VALUE "ProductVersion", "0.4.13"
+            VALUE "ProductVersion", "0.4.14"
         END
     END
     BLOCK "VarFileInfo"

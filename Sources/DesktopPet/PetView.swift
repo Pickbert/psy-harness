@@ -21,9 +21,8 @@ struct PetFrames {
 enum PetAnimation {
     static func liftedFrameIndex(elapsed: TimeInterval, frameCount: Int) -> Int {
         guard frameCount > 1 else { return 0 }
-        let cycleLength = frameCount * 2 - 2
-        let step = Int(max(0, elapsed) * 7) % cycleLength
-        return step < frameCount ? step : cycleLength - step
+        let phase = max(0, elapsed).truncatingRemainder(dividingBy: 1.2)
+        return phase >= 0.42 && phase < 0.60 ? 1 : 0
     }
 }
 

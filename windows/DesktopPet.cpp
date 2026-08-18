@@ -124,7 +124,7 @@ std::vector<IStream*> g_imageStreams;
 std::unique_ptr<Bitmap> g_dogImage;
 std::unique_ptr<Bitmap> g_blinkImage;
 std::array<std::unique_ptr<Bitmap>, 4> g_walkImages;
-std::array<std::unique_ptr<Bitmap>, 4> g_liftImages;
+std::array<std::unique_ptr<Bitmap>, 2> g_liftImages;
 std::unique_ptr<Bitmap> g_waitingImage;
 std::unique_ptr<Bitmap> g_waitingBlinkImage;
 std::unique_ptr<Bitmap> g_waitingEarImage;
@@ -1322,9 +1322,8 @@ void RenderPet() {
 
         Bitmap* activeImage = g_dogImage.get();
         if (isLifted) {
-            constexpr int cycleLength = 6;
-            int step = static_cast<int>(std::max(0.0, g_animationTime - g_dragAnimationStartedAt) * 7) % cycleLength;
-            int frameIndex = step < 4 ? step : cycleLength - step;
+            double phase = std::fmod(std::max(0.0, g_animationTime - g_dragAnimationStartedAt), 1.2);
+            int frameIndex = phase >= 0.42 && phase < 0.60 ? 1 : 0;
             if (g_liftImages[frameIndex]) {
                 activeImage = g_liftImages[frameIndex].get();
             }
@@ -1721,9 +1720,7 @@ bool LoadPetFrames() {
     g_waitingEarImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_EAR);
     g_waitingTailImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_TAIL);
     g_liftImages[0] = LoadEmbeddedImage(IDR_SHIBA_LIFT_1);
-    g_liftImages[1] = LoadEmbeddedImage(IDR_SHIBA_LIFT_2);
-    g_liftImages[2] = LoadEmbeddedImage(IDR_SHIBA_LIFT_3);
-    g_liftImages[3] = LoadEmbeddedImage(IDR_SHIBA_LIFT_4);
+    g_liftImages[1] = LoadEmbeddedImage(IDR_SHIBA_LIFT_BLINK);
     return g_dogImage && g_blinkImage && g_waitingImage && g_waitingBlinkImage &&
         g_waitingEarImage && g_waitingTailImage && std::all_of(
         g_walkImages.begin(),

@@ -849,7 +849,10 @@ final class PetController: NSObject {
         let idle = loadImage(named: "shiba") ?? fallbackImage()
         let blink = loadImage(named: "shiba-blink-v2") ?? idle
         let walking = (1...4).compactMap { loadImage(named: "shiba-walk-\($0)-v2") }
-        let lifted = (1...4).compactMap { loadImage(named: "shiba-lift-\($0)") }
+        let lifted = [
+            loadImage(named: "shiba-lift-1"),
+            loadImage(named: "shiba-lift-blink")
+        ].compactMap { $0 }
         let waiting = loadImage(named: "shiba-waiting") ?? idle
         let waitingBlink = loadImage(named: "shiba-waiting-blink") ?? waiting
         let waitingEar = loadImage(named: "shiba-waiting-ear") ?? waiting
