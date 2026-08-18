@@ -124,6 +124,7 @@ std::vector<IStream*> g_imageStreams;
 std::unique_ptr<Bitmap> g_dogImage;
 std::unique_ptr<Bitmap> g_blinkImage;
 std::array<std::unique_ptr<Bitmap>, 4> g_walkImages;
+std::array<std::unique_ptr<Bitmap>, 4> g_liftImages;
 std::unique_ptr<Bitmap> g_waitingImage;
 std::unique_ptr<Bitmap> g_waitingBlinkImage;
 std::unique_ptr<Bitmap> g_waitingEarImage;
@@ -136,6 +137,7 @@ bool g_paused = false;
 bool g_facingRight = true;
 bool g_dragging = false;
 bool g_didDrag = false;
+double g_dragAnimationStartedAt = 0;
 POINT g_dragStartCursor{};
 POINT g_dragStartWindow{};
 Mood g_mood = Mood::Idle;
@@ -1290,7 +1292,12 @@ void RenderPet() {
         float bob = 0;
         float scaleY = 1;
         float tilt = 0;
-        if (g_mood == Mood::Walking) {
+        bool isLifted = g_dragging && g_didDrag;
+        if (isLifted) {
+            double elapsed = g_animationTime - g_dragAnimationStartedAt;
+            bob = static_cast<float>(4 + std::sin(elapsed * 8) * 1.2);
+            tilt = static_cast<float>(std::sin(elapsed * 7) * 1.0);
+        } else if (g_mood == Mood::Walking) {
             bob = static_cast<float>(std::abs(std::sin(g_animationTime * 9)) * 5);
             tilt = static_cast<float>(std::sin(g_animationTime * 9) * 1.4);
         } else if (g_mood == Mood::Sleeping) {
@@ -1306,7 +1313,7 @@ void RenderPet() {
             tilt = static_cast<float>(std::sin(g_animationTime * 1.3) * 0.45);
         }
 
-        if (g_affectionRemaining > 0) {
+        if (!isLifted && g_affectionRemaining > 0) {
             float progress = static_cast<float>(std::clamp(g_affectionAge / 1.05, 0.0, 1.0));
             constexpr float pi = 3.14159265358979323846f;
             bob += std::abs(std::sin(progress * pi * 2)) * 7 * (1 - progress * 0.35f);
@@ -1314,7 +1321,14 @@ void RenderPet() {
         }
 
         Bitmap* activeImage = g_dogImage.get();
-        if (g_mood == Mood::Walking) {
+        if (isLifted) {
+            constexpr int cycleLength = 6;
+            int step = static_cast<int>(std::max(0.0, g_animationTime - g_dragAnimationStartedAt) * 7) % cycleLength;
+            int frameIndex = step < 4 ? step : cycleLength - step;
+            if (g_liftImages[frameIndex]) {
+                activeImage = g_liftImages[frameIndex].get();
+            }
+        } else if (g_mood == Mood::Walking) {
             int frameIndex = static_cast<int>(g_animationTime * 8.5) % static_cast<int>(g_walkImages.size());
             if (g_walkImages[frameIndex]) {
                 activeImage = g_walkImages[frameIndex].get();
@@ -1362,7 +1376,7 @@ void RenderPet() {
         );
         graphics.Restore(state);
 
-        if (g_mood == Mood::Sleeping) {
+        if (g_mood == Mood::Sleeping && !isLifted) {
             Font font(L"Segoe UI", g_petSize * 0.12f, FontStyleBold, UnitPixel);
             SolidBrush brush(Color(210, 85, 75, 180));
             graphics.DrawString(L"Z", -1, &font, PointF(g_petSize * 0.76f, g_petSize * 0.14f), &brush);
@@ -1706,10 +1720,18 @@ bool LoadPetFrames() {
     g_waitingBlinkImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_BLINK);
     g_waitingEarImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_EAR);
     g_waitingTailImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_TAIL);
+    g_liftImages[0] = LoadEmbeddedImage(IDR_SHIBA_LIFT_1);
+    g_liftImages[1] = LoadEmbeddedImage(IDR_SHIBA_LIFT_2);
+    g_liftImages[2] = LoadEmbeddedImage(IDR_SHIBA_LIFT_3);
+    g_liftImages[3] = LoadEmbeddedImage(IDR_SHIBA_LIFT_4);
     return g_dogImage && g_blinkImage && g_waitingImage && g_waitingBlinkImage &&
         g_waitingEarImage && g_waitingTailImage && std::all_of(
         g_walkImages.begin(),
         g_walkImages.end(),
+        [](const std::unique_ptr<Bitmap>& image) { return image != nullptr; }
+    ) && std::all_of(
+        g_liftImages.begin(),
+        g_liftImages.end(),
         [](const std::unique_ptr<Bitmap>& image) { return image != nullptr; }
     );
 }
@@ -1751,7 +1773,13 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 GetCursorPos(&cursor);
                 int deltaX = cursor.x - g_dragStartCursor.x;
                 int deltaY = cursor.y - g_dragStartCursor.y;
-                g_didDrag = g_didDrag || std::hypot(deltaX, deltaY) > 3;
+                if (!g_didDrag && std::hypot(deltaX, deltaY) > 3) {
+                    g_didDrag = true;
+                    g_dragAnimationStartedAt = g_animationTime;
+                    g_hasTarget = false;
+                    g_mood = Mood::Idle;
+                    g_blinkElapsed = -1;
+                }
                 SetWindowPos(
                     window,
                     HWND_TOPMOST,
@@ -1766,9 +1794,11 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             break;
         case WM_LBUTTONUP:
             if (g_dragging) {
-                ReleaseCapture();
+                bool didDrag = g_didDrag;
                 g_dragging = false;
-                if (g_didDrag) {
+                g_didDrag = false;
+                ReleaseCapture();
+                if (didDrag) {
                     ClampWindowToWorkArea();
                     g_mood = Mood::Idle;
                     g_hasTarget = false;
@@ -1789,6 +1819,20 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                     } else {
                         ShowAffection();
                     }
+                }
+                return 0;
+            }
+            break;
+        case WM_CAPTURECHANGED:
+            if (g_dragging) {
+                bool didDrag = g_didDrag;
+                g_dragging = false;
+                g_didDrag = false;
+                if (didDrag) {
+                    ClampWindowToWorkArea();
+                    g_mood = Mood::Idle;
+                    g_hasTarget = false;
+                    g_decisionRemaining = 2;
                 }
                 return 0;
             }
@@ -1956,6 +2000,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     g_waitingEarImage.reset();
     g_waitingTailImage.reset();
     for (std::unique_ptr<Bitmap>& image : g_walkImages) {
+        image.reset();
+    }
+    for (std::unique_ptr<Bitmap>& image : g_liftImages) {
         image.reset();
     }
     for (IStream* imageStream : g_imageStreams) {

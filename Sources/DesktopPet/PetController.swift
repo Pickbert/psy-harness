@@ -35,6 +35,7 @@ final class PetController: NSObject {
     private var conversationHistory: [DeepSeekMessage] = []
     private var isRequestInFlight = false
     private var isAwaitingAgentApproval = false
+    private var isDraggingPet = false
     private var toolStatusGeneration = 0
     private var securityScopedWorkspace: URL?
     private var lastInteractionAt = ProcessInfo.processInfo.systemUptime
@@ -66,6 +67,9 @@ final class PetController: NSObject {
         window.title = "桌面小柴"
         window.setAccessibilityTitle("桌面小柴")
 
+        petView.onDragStarted = { [weak self] in
+            self?.beginDragging()
+        }
         petView.onDragEnded = { [weak self] in
             self?.finishDragging()
         }
@@ -454,7 +458,7 @@ final class PetController: NSObject {
             self.bubbleDismissAt = nil
         }
 
-        guard !isPaused, !isAwaitingAgentApproval, isVisible else { return }
+        guard !isPaused, !isAwaitingAgentApproval, !isDraggingPet, isVisible else { return }
 
         let timeout = TimeInterval(waitingTimeoutMinutes * 60)
         if timeout > 0, !isRequestInFlight, now - lastInteractionAt >= timeout {
@@ -506,8 +510,16 @@ final class PetController: NSObject {
         }
     }
 
+    private func beginDragging() {
+        recordUserInteraction()
+        isDraggingPet = true
+        targetX = nil
+        mood = .idle
+    }
+
     private func finishDragging() {
         recordUserInteraction()
+        isDraggingPet = false
         clampToVisibleScreen()
         targetX = nil
         mood = .idle
@@ -837,6 +849,7 @@ final class PetController: NSObject {
         let idle = loadImage(named: "shiba") ?? fallbackImage()
         let blink = loadImage(named: "shiba-blink-v2") ?? idle
         let walking = (1...4).compactMap { loadImage(named: "shiba-walk-\($0)-v2") }
+        let lifted = (1...4).compactMap { loadImage(named: "shiba-lift-\($0)") }
         let waiting = loadImage(named: "shiba-waiting") ?? idle
         let waitingBlink = loadImage(named: "shiba-waiting-blink") ?? waiting
         let waitingEar = loadImage(named: "shiba-waiting-ear") ?? waiting
@@ -845,6 +858,7 @@ final class PetController: NSObject {
             idle: idle,
             blink: blink,
             walking: walking,
+            lifted: lifted,
             waiting: waiting,
             waitingBlink: waitingBlink,
             waitingEar: waitingEar,

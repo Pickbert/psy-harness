@@ -11,10 +11,20 @@ struct PetFrames {
     let idle: NSImage
     let blink: NSImage
     let walking: [NSImage]
+    let lifted: [NSImage]
     let waiting: NSImage
     let waitingBlink: NSImage
     let waitingEar: NSImage
     let waitingTail: NSImage
+}
+
+enum PetAnimation {
+    static func liftedFrameIndex(elapsed: TimeInterval, frameCount: Int) -> Int {
+        guard frameCount > 1 else { return 0 }
+        let cycleLength = frameCount * 2 - 2
+        let step = Int(max(0, elapsed) * 7) % cycleLength
+        return step < frameCount ? step : cycleLength - step
+    }
 }
 
 private enum WaitingMotion {
@@ -23,6 +33,7 @@ private enum WaitingMotion {
 }
 
 final class PetView: NSView {
+    var onDragStarted: (() -> Void)?
     var onDragEnded: (() -> Void)?
     var onTripleClick: (() -> Void)?
     var onContextMenu: ((NSEvent) -> Void)?
@@ -54,6 +65,8 @@ final class PetView: NSView {
     private var mouseDownLocation: CGPoint?
     private var windowOriginAtMouseDown: CGPoint?
     private var didDrag = false
+    private var isBeingDragged = false
+    private var dragAnimationStartedAt: TimeInterval = 0
     private var message: String?
     private var messageExpiresAt: TimeInterval = 0
     private var hearts: [HeartParticle] = []
@@ -130,7 +143,13 @@ final class PetView: NSView {
         let currentLocation = NSEvent.mouseLocation
         let deltaX = currentLocation.x - mouseDownLocation.x
         let deltaY = currentLocation.y - mouseDownLocation.y
-        didDrag = didDrag || hypot(deltaX, deltaY) > 3
+        if !didDrag, hypot(deltaX, deltaY) > 3 {
+            didDrag = true
+            isBeingDragged = true
+            dragAnimationStartedAt = animationTime
+            blinkStartedAt = nil
+            onDragStarted?()
+        }
         window.setFrameOrigin(
             CGPoint(x: windowOriginAtMouseDown.x + deltaX, y: windowOriginAtMouseDown.y + deltaY)
         )
@@ -138,6 +157,8 @@ final class PetView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         if didDrag {
+            isBeingDragged = false
+            needsDisplay = true
             onDragEnded?()
         } else if event.clickCount >= 3 {
             onTripleClick?()
@@ -180,26 +201,33 @@ final class PetView: NSView {
         let breathingScale: CGFloat
         var tilt: CGFloat
 
-        switch mood {
-        case .walking:
-            bob = abs(sin(animationTime * 9)) * 5
+        if isBeingDragged {
+            let elapsed = animationTime - dragAnimationStartedAt
+            bob = 4 + CGFloat(sin(elapsed * 8) * 1.2)
             breathingScale = 1
-            tilt = sin(animationTime * 9) * 0.025
-        case .sleeping:
-            bob = 0
-            breathingScale = 0.97 + CGFloat((sin(animationTime * 2.2) + 1) * 0.012)
-            tilt = -0.035
-        case .waiting:
-            bob = CGFloat(sin(animationTime * 2.0) * 0.55)
-            breathingScale = 0.992 + CGFloat((sin(animationTime * 2.0) + 1) * 0.006)
-            tilt = CGFloat(sin(animationTime * 0.9) * 0.004)
-        case .idle:
-            bob = CGFloat(sin(animationTime * 2.8) * 1.5)
-            breathingScale = 0.99 + CGFloat((sin(animationTime * 2.8) + 1) * 0.008)
-            tilt = CGFloat(sin(animationTime * 1.3) * 0.008)
+            tilt = CGFloat(sin(elapsed * 7) * 0.018)
+        } else {
+            switch mood {
+            case .walking:
+                bob = abs(sin(animationTime * 9)) * 5
+                breathingScale = 1
+                tilt = sin(animationTime * 9) * 0.025
+            case .sleeping:
+                bob = 0
+                breathingScale = 0.97 + CGFloat((sin(animationTime * 2.2) + 1) * 0.012)
+                tilt = -0.035
+            case .waiting:
+                bob = CGFloat(sin(animationTime * 2.0) * 0.55)
+                breathingScale = 0.992 + CGFloat((sin(animationTime * 2.0) + 1) * 0.006)
+                tilt = CGFloat(sin(animationTime * 0.9) * 0.004)
+            case .idle:
+                bob = CGFloat(sin(animationTime * 2.8) * 1.5)
+                breathingScale = 0.99 + CGFloat((sin(animationTime * 2.8) + 1) * 0.008)
+                tilt = CGFloat(sin(animationTime * 1.3) * 0.008)
+            }
         }
 
-        if animationTime < affectionEndsAt {
+        if !isBeingDragged, animationTime < affectionEndsAt {
             let progress = CGFloat((animationTime - affectionStartedAt) / (affectionEndsAt - affectionStartedAt))
             bob += abs(sin(progress * .pi * 2)) * 7 * (1 - progress * 0.35)
             tilt += sin(progress * .pi * 4) * 0.045 * (1 - progress)
@@ -215,7 +243,7 @@ final class PetView: NSView {
         activeFrame().draw(in: dogRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high])
         context.restoreGraphicsState()
 
-        if mood == .sleeping {
+        if mood == .sleeping, !isBeingDragged {
             drawSleepMarks()
         }
     }
@@ -251,6 +279,13 @@ final class PetView: NSView {
     }
 
     private func activeFrame() -> NSImage {
+        if isBeingDragged, !frames.lifted.isEmpty {
+            let index = PetAnimation.liftedFrameIndex(
+                elapsed: animationTime - dragAnimationStartedAt,
+                frameCount: frames.lifted.count
+            )
+            return frames.lifted[index]
+        }
         switch mood {
         case .walking:
             guard !frames.walking.isEmpty else { return frames.idle }
