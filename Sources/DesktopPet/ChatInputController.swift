@@ -8,6 +8,7 @@ private final class ChatInputPanel: NSPanel {
 final class ChatInputController: NSObject, NSTextFieldDelegate {
     private let panel: ChatInputPanel
     private let inputField = NSTextField()
+    private let hintLabel = NSTextField(labelWithString: "")
     private var submittedText: String?
 
     override init() {
@@ -21,7 +22,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
         configurePanel()
     }
 
-    func prompt(on screen: NSScreen?) -> String? {
+    func prompt(on screen: NSScreen?, attachments: [String] = []) -> String? {
         if panel.isVisible {
             NSApp.activate(ignoringOtherApps: true)
             panel.makeKeyAndOrderFront(nil)
@@ -31,6 +32,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
 
         submittedText = nil
         inputField.stringValue = ""
+        updateContext(attachments: attachments)
         position(on: screen ?? NSScreen.main ?? NSScreen.screens.first)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
@@ -90,7 +92,6 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
         inputField.setAccessibilityLabel("DeepSeek 对话输入")
         inputField.setAccessibilityHelp("输入内容后按回车发送，按 Escape 取消")
 
-        let hintLabel = NSTextField(labelWithString: "↵ 发送    esc 取消    DeepSeek")
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
         hintLabel.font = .systemFont(ofSize: 11, weight: .medium)
         hintLabel.textColor = NSColor.white.withAlphaComponent(0.42)
@@ -133,6 +134,20 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
             hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: iconView.leadingAnchor, constant: -18),
             hintLabel.topAnchor.constraint(equalTo: inputField.bottomAnchor, constant: 7)
         ])
+    }
+
+    private func updateContext(attachments: [String]) {
+        if attachments.isEmpty {
+            hintLabel.stringValue = "↵ 发送    esc 取消    DeepSeek"
+            inputField.setAccessibilityHelp("输入内容后按回车发送，按 Escape 取消")
+            return
+        }
+
+        let visibleNames = attachments.prefix(2).joined(separator: "、")
+        let remaining = attachments.count - min(attachments.count, 2)
+        let suffix = remaining > 0 ? "  +\(remaining)" : ""
+        hintLabel.stringValue = "📎 \(visibleNames)\(suffix)    ↵ 发送    esc 取消"
+        inputField.setAccessibilityHelp("正在分析附件 \(attachments.joined(separator: "、"))。输入要求后按回车发送，按 Escape 取消")
     }
 
     private func position(on screen: NSScreen?) {

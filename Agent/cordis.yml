@@ -73,6 +73,11 @@
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
 
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
 - id: tool-todo
   name: '@deepseek-ai/dsh-tool-todo'
   disabled: !!js process.env.DSH_PLUGIN_TODO !== '1'

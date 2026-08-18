@@ -18,7 +18,9 @@ fi
 mkdir -p "$runtime_dir"
 cd "$harness_dir"
 
+CI="${CI:-true}" \
 COREPACK_NPM_REGISTRY="${COREPACK_NPM_REGISTRY:-https://registry.npmjs.org}" \
+npm_config_registry="${npm_config_registry:-https://registry.npmjs.org}" \
     corepack pnpm install --frozen-lockfile --ignore-scripts --child-concurrency=1 --network-concurrency=8
 if [[ ! -x node_modules/.pnpm/esbuild@0.28.1/node_modules/esbuild/bin/esbuild ]]; then
     node node_modules/.pnpm/esbuild@0.28.1/node_modules/esbuild/install.js

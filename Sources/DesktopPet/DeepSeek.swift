@@ -38,20 +38,26 @@ final class DeepSeekSettingsStore {
     private let modelDefaultsKey = "deepSeekModel"
     private let agentMaxOutputTokensDefaultsKey = "deepSeekAgentMaxOutputTokens"
     private let directChatMaxOutputTokensDefaultsKey = "deepSeekDirectChatMaxOutputTokens"
+    private let fileAnalysisMaxFileSizeDefaultsKey = "desktopPetFileAnalysisMaxFileSizeMB"
+    private let defaults: UserDefaults
     private let cacheLock = NSLock()
     private var hasLoadedAPIKey = false
     private var cachedAPIKey: String?
 
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
     var selectedModel: DeepSeekModel {
         get {
             guard
-                let value = UserDefaults.standard.string(forKey: modelDefaultsKey),
+                let value = defaults.string(forKey: modelDefaultsKey),
                 let model = DeepSeekModel(rawValue: value)
             else { return .flash }
             return model
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: modelDefaultsKey)
+            defaults.set(newValue.rawValue, forKey: modelDefaultsKey)
         }
     }
 
@@ -63,7 +69,7 @@ final class DeepSeekSettingsStore {
             )
         }
         set {
-            UserDefaults.standard.set(
+            defaults.set(
                 DeepSeekOutputLimits.normalized(newValue, default: DeepSeekOutputLimits.defaultAgent),
                 forKey: agentMaxOutputTokensDefaultsKey
             )
@@ -78,9 +84,32 @@ final class DeepSeekSettingsStore {
             )
         }
         set {
-            UserDefaults.standard.set(
+            defaults.set(
                 DeepSeekOutputLimits.normalized(newValue, default: DeepSeekOutputLimits.defaultDirectChat),
                 forKey: directChatMaxOutputTokensDefaultsKey
+            )
+        }
+    }
+
+    var fileAnalysisMaxFileSizeMB: Int {
+        get {
+            guard defaults.object(forKey: fileAnalysisMaxFileSizeDefaultsKey) != nil else {
+                return FileAnalysisLimits.defaultMaxFileSizeMB
+            }
+            let stored = defaults.integer(forKey: fileAnalysisMaxFileSizeDefaultsKey)
+            guard FileAnalysisLimits.isValid(maxFileSizeMB: stored) else {
+                defaults.set(
+                    FileAnalysisLimits.defaultMaxFileSizeMB,
+                    forKey: fileAnalysisMaxFileSizeDefaultsKey
+                )
+                return FileAnalysisLimits.defaultMaxFileSizeMB
+            }
+            return stored
+        }
+        set {
+            defaults.set(
+                FileAnalysisLimits.normalized(maxFileSizeMB: newValue),
+                forKey: fileAnalysisMaxFileSizeDefaultsKey
             )
         }
     }
@@ -165,9 +194,9 @@ final class DeepSeekSettingsStore {
     }
 
     private func storedOutputTokens(forKey key: String, default defaultValue: Int) -> Int {
-        guard UserDefaults.standard.object(forKey: key) != nil else { return defaultValue }
+        guard defaults.object(forKey: key) != nil else { return defaultValue }
         return DeepSeekOutputLimits.normalized(
-            UserDefaults.standard.integer(forKey: key),
+            defaults.integer(forKey: key),
             default: defaultValue
         )
     }

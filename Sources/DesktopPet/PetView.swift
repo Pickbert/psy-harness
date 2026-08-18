@@ -37,6 +37,9 @@ final class PetView: NSView {
     var onTripleClick: (() -> Void)?
     var onContextMenu: ((NSEvent) -> Void)?
     var onInteraction: (() -> Void)?
+    var canAcceptFileDrop: (() -> Bool)?
+    var onFileDragStateChanged: ((Bool) -> Void)?
+    var onFilesDropped: (([URL]) -> Void)?
 
     var mood: PetMood = .idle {
         didSet {
@@ -65,6 +68,7 @@ final class PetView: NSView {
     private var windowOriginAtMouseDown: CGPoint?
     private var didDrag = false
     private var isBeingDragged = false
+    private var isReceivingFileDrop = false
     private var dragAnimationStartedAt: TimeInterval = 0
     private var message: String?
     private var messageExpiresAt: TimeInterval = 0
@@ -78,6 +82,7 @@ final class PetView: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
+        registerForDraggedTypes([.fileURL])
     }
 
     required init?(coder: NSCoder) {
@@ -174,14 +179,77 @@ final class PetView: NSView {
         onContextMenu?(event)
     }
 
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        updateFileDropState(canReceiveFiles(from: sender))
+        return isReceivingFileDrop ? .copy : []
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let accepted = canReceiveFiles(from: sender)
+        updateFileDropState(accepted)
+        return accepted ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        updateFileDropState(false)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard canReceiveFiles(from: sender) else {
+            updateFileDropState(false)
+            return false
+        }
+        let urls = draggedFileURLs(from: sender)
+        updateFileDropState(false)
+        onInteraction?()
+        onFilesDropped?(urls)
+        return true
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         NSColor.clear.setFill()
         dirtyRect.fill()
 
         drawDog()
+        drawFileDropHighlight()
         drawHearts()
         drawMessage()
+    }
+
+    private func canReceiveFiles(from sender: NSDraggingInfo) -> Bool {
+        guard canAcceptFileDrop?() ?? false else { return false }
+        return !draggedFileURLs(from: sender).isEmpty
+    }
+
+    private func draggedFileURLs(from sender: NSDraggingInfo) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true
+        ]
+        return (sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: options
+        ) as? [URL]) ?? []
+    }
+
+    private func updateFileDropState(_ active: Bool) {
+        guard active != isReceivingFileDrop else { return }
+        isReceivingFileDrop = active
+        onFileDragStateChanged?(active)
+        needsDisplay = true
+    }
+
+    private func drawFileDropHighlight() {
+        guard isReceivingFileDrop else { return }
+        let inset = max(5, bounds.width * 0.035)
+        let rect = bounds.insetBy(dx: inset, dy: inset)
+        let path = NSBezierPath(roundedRect: rect, xRadius: bounds.width * 0.18, yRadius: bounds.width * 0.18)
+        NSColor.systemOrange.withAlphaComponent(0.12).setFill()
+        path.fill()
+        NSColor.systemOrange.withAlphaComponent(0.95).setStroke()
+        path.lineWidth = max(2.5, bounds.width * 0.018)
+        path.setLineDash([7, 5], count: 2, phase: animationTime * 18)
+        path.stroke()
     }
 
     private func drawDog() {

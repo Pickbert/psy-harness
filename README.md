@@ -22,6 +22,7 @@
 - macOS AI 输入框采用 Alfred 风格的深色极简浮层，支持回车发送和 `Esc` 取消
 - DeepSeek 回复以小狗对话气泡展示，支持 Markdown 与原生表格渲染，并保留最近 6 轮上下文
 - Apple Silicon + macOS 14 及以上可启用本地 DeepSeek Harness Agent，读取文件、修改项目和运行命令
+- macOS 可将 1–5 个 PDF、DOCX、文本、Markdown、CSV、JSON 或常见代码文件直接拖到小狗身上，再输入自定义分析要求
 - Agent 使用用户选择的独立工作目录；写入和命令可“允许一次”或在当前运行期间“允许所有”，高风险和越界操作始终拒绝
 - “插件与技能”设置直接控制 Harness Cordis 插件，可启用本地 Skill、任务清单、长期目标和 DeepSeek 网页搜索
 - 记忆上次选择的小狗尺寸
@@ -79,6 +80,14 @@ build/windows/DesktopPet-Windows-x64.exe
 3. Agent 最大输出 Token 默认 `256000`，普通对话默认 `8192`，两者都可在设置中调整（范围 `1–384000`）。
 4. 在短时间内连续点击小狗 3 次，输入问题并按回车发送；macOS 也可在任意应用中按 `⌥⌘0` 直接唤醒对话框。
 5. 回复会显示在小狗上方的对话气泡中；再次三连击可以继续上下文对话。
+
+### 拖拽文件分析（macOS Agent）
+
+把文件拖到小狗身上后，小狗会停止移动并显示橙色接收高亮。本地解析完成后，Alfred 风格输入框会显示附件名称；输入总结、对比、提取数据或其他要求并按回车即可。之后三连击或按 `⌥⌘0` 会继续当前文件会话。
+
+首版支持 PDF、DOCX、TXT、Markdown、CSV、JSON 和常见文本代码文件。PDF 按页保留页码；扫描版 PDF 暂不支持 OCR；DOCX 中的嵌入图片暂不分析。文件会复制到 `Application Support/DesktopPet/FileSessions/<UUID>` 的隔离工作区，Agent 通过 `glob`、`grep` 和 `read` 按需检索分块，不会直接修改用户原文件。隔离副本如需写入仍遵循 Agent 审批流程。
+
+每批最多 5 个文件，原始文件总量和解析后文本总量分别最多 100 MB。单文件默认上限为 10 MB，可在“设置 DeepSeek…”中调整为 1–100 MB。文件会话保留 7 天；可在“本地 Agent”菜单中结束当前文件分析或清除全部文件分析缓存。文件 Agent 启动失败时会保留会话供重试，不会降级到无法读取附件的普通聊天。
 
 ### 本地 Harness Agent（macOS）
 
@@ -154,4 +163,4 @@ brew install mingw-w64
 
 ---
 
-开发日期：2026-08-17
+开发日期：2026-08-19
