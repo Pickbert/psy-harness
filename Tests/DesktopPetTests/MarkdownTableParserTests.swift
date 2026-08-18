@@ -76,8 +76,14 @@ final class MarkdownTableParserTests: XCTestCase {
         XCTAssertEqual(cells.count, 4)
         XCTAssertEqual(Set(cells.map(\.startingRow)), [0, 1])
         XCTAssertEqual(Set(cells.map(\.startingColumn)), [0, 1])
-        XCTAssertTrue(cells.allSatisfy { $0.contentWidthValueType == .percentageValueType })
+        XCTAssertTrue(cells.filter { $0.startingRow == 0 }.allSatisfy {
+            $0.contentWidthValueType == .percentageValueType
+        })
+        XCTAssertTrue(cells.filter { $0.startingRow > 0 }.allSatisfy {
+            $0.contentWidthValueType != .percentageValueType
+        })
         XCTAssertFalse(rendered.string.contains("---"))
+        XCTAssertTrue(rendered.string.hasSuffix("\n"))
 
         let storage = rendered.string as NSString
         for index in 0..<storage.length where storage.character(at: index) == 10 {
@@ -85,5 +91,109 @@ final class MarkdownTableParserTests: XCTestCase {
                 as? NSParagraphStyle
             XCTAssertEqual(style?.textBlocks.compactMap { $0 as? NSTextTableBlock }.count, 1)
         }
+    }
+
+    func testBubbleSynchronizesWideTextContainerBeforeLayingOutTable() {
+        _ = NSApplication.shared
+        let controller = SpeechBubbleController()
+        let anchor = NSWindow(
+            contentRect: CGRect(x: 100, y: 100, width: 200, height: 200),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        controller.show(text: "普通回答", anchoredTo: anchor)
+        let compact = controller.layoutSnapshotForTesting()
+        controller.show(text: """
+        | 文件 | 大小 | 说明 |
+        | --- | --- | --- |
+        | `.md` | 12 KB | `Markdown 源文件` |
+        | `.pdf` | 80 KB | `排版好的 PDF 成品` |
+        """, anchoredTo: anchor)
+        let wide = controller.layoutSnapshotForTesting()
+
+        XCTAssertEqual(compact.panelSize.width, 360, accuracy: 0.5)
+        XCTAssertEqual(wide.panelSize.width, 500, accuracy: 0.5)
+        XCTAssertGreaterThan(wide.scrollContentSize.width, compact.scrollContentSize.width)
+        XCTAssertEqual(wide.textViewFrame.width, wide.scrollContentSize.width, accuracy: 0.5)
+        XCTAssertEqual(wide.textContainerSize.width, wide.scrollContentSize.width, accuracy: 0.5)
+        controller.hide()
+    }
+
+    func testNarrowMultilineTableRowsDoNotOverlapAndFillContainer() throws {
+        let source = """
+        | 文件 | 大小 | 说明 |
+        | --- | --- | --- |
+        | `.md` | 12 KB | `Markdown 源文件以及后续编辑说明` |
+        | `.pdf` | 80 KB | `排版好的 PDF 成品与打印说明` |
+        """
+        let rendered = SpeechBubbleController().renderMarkdown(MarkdownTableParser.parse(source))
+        let storage = NSTextStorage(attributedString: rendered)
+        let layoutManager = NSLayoutManager()
+        let containerWidth: CGFloat = 318
+        let textContainer = NSTextContainer(
+            size: CGSize(width: containerWidth, height: CGFloat.greatestFiniteMagnitude)
+        )
+        textContainer.lineFragmentPadding = 3
+        layoutManager.addTextContainer(textContainer)
+        storage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        var thirdColumnRows: [(row: Int, rect: CGRect)] = []
+        rendered.enumerateAttribute(
+            .paragraphStyle,
+            in: NSRange(location: 0, length: rendered.length)
+        ) { value, range, _ in
+            guard let style = value as? NSParagraphStyle,
+                  let block = style.textBlocks.compactMap({ $0 as? NSTextTableBlock }).first,
+                  block.startingColumn == 2
+            else { return }
+            var contentRange = range
+            if contentRange.length > 0,
+               (rendered.string as NSString).character(at: NSMaxRange(contentRange) - 1) == 10 {
+                contentRange.length -= 1
+            }
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: contentRange,
+                actualCharacterRange: nil
+            )
+            thirdColumnRows.append((
+                row: block.startingRow,
+                rect: layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            ))
+        }
+
+        thirdColumnRows.sort { $0.row < $1.row }
+        XCTAssertEqual(thirdColumnRows.count, 3)
+        for pair in zip(thirdColumnRows, thirdColumnRows.dropFirst()) {
+            XCTAssertLessThanOrEqual(pair.0.rect.maxY, pair.1.rect.minY)
+        }
+        XCTAssertGreaterThan(thirdColumnRows[1].rect.height, 25)
+        XCTAssertGreaterThanOrEqual(
+            layoutManager.usedRect(for: textContainer).width,
+            containerWidth * 0.95
+        )
+
+        let height = ceil(layoutManager.usedRect(for: textContainer).height + 12)
+        let textView = NSTextView(frame: CGRect(x: 0, y: 0, width: containerWidth, height: height))
+        textView.textContainer?.widthTracksTextView = true
+        textView.textStorage?.setAttributedString(rendered)
+        textView.layoutManager?.ensureLayout(for: try XCTUnwrap(textView.textContainer))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(containerWidth * 2),
+            pixelsHigh: Int(height * 2),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        bitmap.size = textView.bounds.size
+        textView.cacheDisplay(in: textView.bounds, to: bitmap)
+        XCTAssertNotNil(bitmap.representation(using: .png, properties: [:]))
     }
 }

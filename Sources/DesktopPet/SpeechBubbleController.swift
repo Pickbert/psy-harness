@@ -1,5 +1,13 @@
 import AppKit
 
+struct SpeechBubbleLayoutSnapshot {
+    let panelSize: CGSize
+    let scrollContentSize: CGSize
+    let textViewFrame: CGRect
+    let textContainerSize: CGSize
+    let usedTextRect: CGRect
+}
+
 final class SpeechBubbleController {
     private let panel: NSPanel
     private let textView: NSTextView
@@ -50,7 +58,9 @@ final class SpeechBubbleController {
         textView.textColor = .labelColor
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
         scrollView.documentView = textView
 
         toolStatusBar.isHidden = true
@@ -78,12 +88,10 @@ final class SpeechBubbleController {
             if case .table = segment { return true }
             return false
         }
+        prepareTextLayoutWidth()
         let renderedText = renderMarkdown(segments)
         textView.textStorage?.setAttributedString(renderedText)
-        resize(for: renderedText)
-        if let textContainer = textView.textContainer {
-            textView.layoutManager?.ensureLayout(for: textContainer)
-        }
+        relayoutContent()
         if followLatest {
             textView.scrollToEndOfDocument(nil)
         } else {
@@ -108,9 +116,7 @@ final class SpeechBubbleController {
         } else {
             toolProgressIndicator.stopAnimation(nil)
         }
-        let currentText = textView.textStorage.map(NSAttributedString.init(attributedString:))
-            ?? NSAttributedString(string: textView.string)
-        resize(for: currentText)
+        relayoutContent()
         reposition(anchoredTo: anchorWindow)
         if isToolStatusVisible { panel.orderFrontRegardless() }
     }
@@ -149,6 +155,16 @@ final class SpeechBubbleController {
             }
         }
         return result
+    }
+
+    func layoutSnapshotForTesting() -> SpeechBubbleLayoutSnapshot {
+        SpeechBubbleLayoutSnapshot(
+            panelSize: panel.contentView?.bounds.size ?? panel.frame.size,
+            scrollContentSize: scrollView.contentSize,
+            textViewFrame: textView.frame,
+            textContainerSize: textView.textContainer?.containerSize ?? .zero,
+            usedTextRect: usedTextRect()
+        )
     }
 
     private func renderTextMarkdown(_ markdown: String) -> NSMutableAttributedString {
@@ -194,6 +210,7 @@ final class SpeechBubbleController {
             }
             result.addAttributes(attributes, range: range)
         }
+        result.removeAttribute(inlineIntentKey, range: fullRange)
 
         enum BlockStyle {
             case heading(Int)
@@ -282,6 +299,7 @@ final class SpeechBubbleController {
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.lineSpacing = 2
                 paragraph.paragraphSpacing = 0
+                paragraph.lineBreakMode = .byCharWrapping
                 switch model.alignments[columnIndex] {
                 case .left: paragraph.alignment = .left
                 case .center: paragraph.alignment = .center
@@ -295,7 +313,9 @@ final class SpeechBubbleController {
                     startingColumn: columnIndex,
                     columnSpan: 1
                 )
-                block.setContentWidth(columnWidth, type: .percentageValueType)
+                if rowIndex == 0 {
+                    block.setContentWidth(columnWidth, type: .percentageValueType)
+                }
                 block.setWidth(0.5, type: .absoluteValueType, for: .border)
                 block.setWidth(6, type: .absoluteValueType, for: .padding)
                 block.setBorderColor(NSColor.separatorColor.withAlphaComponent(0.48))
@@ -312,9 +332,7 @@ final class SpeechBubbleController {
                         range: NSRange(location: 0, length: cell.length)
                     )
                 }
-                let isLastCell = rowIndex == rows.count - 1
-                    && columnIndex == model.headers.count - 1
-                if !isLastCell { cell.append(NSAttributedString(string: "\n")) }
+                cell.append(NSAttributedString(string: "\n"))
                 cell.addAttribute(
                     .paragraphStyle,
                     value: paragraph,
@@ -326,17 +344,67 @@ final class SpeechBubbleController {
         return result
     }
 
-    private func resize(for text: NSAttributedString) {
-        let width: CGFloat = prefersWideLayout ? 500 : 360
-        let bounds = text.boundingRect(
-            with: CGSize(width: width - 42, height: 1_000),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            context: nil
-        )
-        let textHeight = min(max(82, ceil(bounds.height) + 38), 240)
-        let height = textHeight + (isToolStatusVisible ? 30 : 0)
-        panel.setContentSize(CGSize(width: width, height: height))
+    private var preferredPanelWidth: CGFloat {
+        prefersWideLayout ? 500 : 360
+    }
+
+    private func prepareTextLayoutWidth() {
+        let currentHeight = max(82, panel.contentView?.bounds.height ?? panel.frame.height)
+        panel.setContentSize(CGSize(width: preferredPanelWidth, height: currentHeight))
         layoutContent()
+        synchronizeTextViewGeometry(documentHeight: nil)
+    }
+
+    private func relayoutContent() {
+        prepareTextLayoutWidth()
+        invalidateAndEnsureTextLayout()
+
+        let usedRect = usedTextRect()
+        let baseHeight = min(max(82, ceil(usedRect.height) + 38), 240)
+        let panelHeight = baseHeight + (isToolStatusVisible ? 30 : 0)
+        panel.setContentSize(CGSize(width: preferredPanelWidth, height: panelHeight))
+        layoutContent()
+
+        let documentHeight = ceil(usedRect.maxY)
+            + textView.textContainerInset.height * 2
+        synchronizeTextViewGeometry(documentHeight: documentHeight)
+        invalidateAndEnsureTextLayout()
+    }
+
+    private func synchronizeTextViewGeometry(documentHeight: CGFloat?) {
+        let viewport = scrollView.contentSize
+        let width = max(1, viewport.width)
+        let height = max(viewport.height, documentHeight ?? textView.frame.height)
+
+        textView.minSize = CGSize(width: 0, height: viewport.height)
+        textView.maxSize = CGSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.frame = CGRect(origin: .zero, size: CGSize(width: width, height: height))
+        textView.textContainer?.containerSize = CGSize(
+            width: width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+    }
+
+    private func invalidateAndEnsureTextLayout() {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer
+        else { return }
+        let range = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
+        layoutManager.invalidateLayout(forCharacterRange: range, actualCharacterRange: nil)
+        layoutManager.ensureLayout(for: textContainer)
+    }
+
+    private func usedTextRect() -> CGRect {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer
+        else { return .zero }
+        layoutManager.ensureLayout(for: textContainer)
+        return layoutManager.usedRect(for: textContainer)
     }
 
     private func layoutContent() {
