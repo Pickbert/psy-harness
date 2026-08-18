@@ -107,7 +107,7 @@ Agent 调用工具时，跟随小狗的气泡顶部会显示无确定进度的�
 
 安全策略为 `workspace-write + ask`：读取所选目录可自动进行，写入和命令会显示审批卡，可选择“允许一次”“允许所有”或“拒绝”。“允许所有”只对当前 sidecar 运行期间的后续安全操作生效，切换工作目录、重启 Agent 或退出 App 后自动恢复逐次确认；删除、提权、凭据访问、明显破坏性命令和结构化越界路径仍会直接拒绝。停止任务会终止并重新启动 sidecar，未完成审批按拒绝处理。
 
-Harness 源码固定在提交 `47f943859bef60e4160492346772ded9b24f765a`，位于 `ThirdParty/deepseek-harness`。构建 Apple Silicon 单文件运行时：
+Harness 源码固定在 `dsh@0.1.0-rc.7` 的提交 `99f6f02fecdb7dff40c3fbc9470f5907c29f74ca`，位于 `ThirdParty/deepseek-harness`。构建 Apple Silicon 单文件运行时：
 
 ```bash
 ./scripts/build-agent-runtime.sh

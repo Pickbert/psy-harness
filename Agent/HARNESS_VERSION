@@ -1,8 +1,6 @@
 upstream=https://github.com/deepseek-ai/deepseek-harness
-commit=47f943859bef60e4160492346772ded9b24f765a
+commit=99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
+release=dsh@0.1.0-rc.7
 runtime=dsh-jsonrpc-agent-pkg-macos-arm64
-local_patch=desktop-pet-jsonrpc-approval-policy-resume-token-config-plugins-file-search-v6
-upgrade_candidate_evaluated=99f6f02fecdb7dff40c3fbc9470f5907c29f74ca
-upgrade_candidate_release=dsh@0.1.0-rc.7
-upgrade_evaluation_date=2026-08-19
-upgrade_decision=deferred-for-separate-compatibility-upgrade
+local_patch=desktop-pet-jsonrpc-approval-policy-resume-token-config-plugins-file-search-native-pty-rc7-v8
+upgrade_date=2026-08-19
