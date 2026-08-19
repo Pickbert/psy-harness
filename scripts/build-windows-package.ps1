@@ -114,9 +114,13 @@ try {
             & $NodeCommand.Source node_modules\tsdown\dist\run.mjs --env.DSH_BUILD_FACE host
             if ($LASTEXITCODE -ne 0) { throw "Harness host bundle failed with exit code $LASTEXITCODE." }
         }
-        & $CorepackCommand.Source pnpm --filter dsh-jsonrpc-agent-pkg deploy --legacy --prod `
-            --config.node-linker=hoisted --config.auto-install-peers=false `
-            --config.link-workspace-packages=true $RuntimeNodeDirectory
+        # pnpm 11's legacy hoisted deploy silently omits some direct workspace
+        # dependencies. Use the dedicated-lockfile deploy implementation while
+        # retaining a flat, link-free node_modules tree for ZIP/Inno packaging.
+        & $CorepackCommand.Source pnpm --filter dsh-jsonrpc-agent-pkg deploy --prod `
+            --ignore-scripts --config.inject-workspace-packages=true `
+            --config.node-linker=hoisted --config.link-workspace-packages=true `
+            $RuntimeNodeDirectory
         if ($LASTEXITCODE -ne 0) { throw "Harness runtime deployment failed with exit code $LASTEXITCODE." }
     }
     finally {
@@ -192,6 +196,16 @@ try {
         "node\node_modules\node-pty\prebuilds\win32-x64\conpty\OpenConsole.exe",
         "node\node_modules\@koromix\koffi-win32-x64\win32_x64\koffi.node"
     )
+    $DeployManifestPath = Join-Path $HarnessDirectory "python\sdk-runtime\package.json"
+    $DeployManifest = Get-Content -LiteralPath $DeployManifestPath -Raw | ConvertFrom-Json
+    $RequiredAgentPackages = @($DeployManifest.dependencies.PSObject.Properties.Name)
+    if ($RequiredAgentPackages.Count -eq 0) {
+        throw "Harness deploy manifest declares no runtime dependencies: $DeployManifestPath"
+    }
+    $RequiredRuntimeFiles += @($RequiredAgentPackages | ForEach-Object {
+        $PackagePath = $_.Replace('/', '\')
+        "node\node_modules\$PackagePath\package.json"
+    })
     foreach ($RelativePath in $RequiredRuntimeFiles) {
         $FullPath = Join-Path $RuntimeDirectory $RelativePath
         if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) {

@@ -124,6 +124,15 @@ jobs:
             throw "Packaged file analysis smoke test failed: $($events -join ' ')"
           }
 
+          $smokeScript = (Resolve-Path "scripts\windows-agent-smoke.mjs").Path
+          $portableRoot = Join-Path $env:RUNNER_TEMP "desktop-pet-portable-smoke"
+          Expand-Archive -LiteralPath "build\$base-Portable.zip" -DestinationPath $portableRoot
+          $portableWorkspace = Join-Path $env:RUNNER_TEMP "desktop-pet-portable-agent-smoke"
+          New-Item -ItemType Directory -Path $portableWorkspace | Out-Null
+          & "$portableRoot\DesktopPetAgent\node.exe" $smokeScript `
+            "$portableRoot\DesktopPetAgent" $portableWorkspace
+          if ($LASTEXITCODE -ne 0) { throw "Portable Agent prompt smoke test failed." }
+
           $installer = Resolve-Path "build\$base-Setup.exe"
           $process = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer smoke test failed with exit code $($process.ExitCode)." }
@@ -133,6 +142,11 @@ jobs:
               throw "Installed package is incomplete; missing $relativePath."
             }
           }
+          $installedWorkspace = Join-Path $env:RUNNER_TEMP "desktop-pet-installed-agent-smoke"
+          New-Item -ItemType Directory -Path $installedWorkspace | Out-Null
+          & "$installedRoot\DesktopPetAgent\node.exe" $smokeScript `
+            "$installedRoot\DesktopPetAgent" $installedWorkspace
+          if ($LASTEXITCODE -ne 0) { throw "Installed Agent prompt smoke test failed." }
           $uninstaller = Join-Path $installedRoot "unins000.exe"
           $process = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Uninstaller smoke test failed with exit code $($process.ExitCode)." }
