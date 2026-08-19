@@ -83,6 +83,11 @@ function escapeMarkdownHeading(value) {
   return normalizeNewlines(String(value)).replaceAll("\n", " ");
 }
 
+export function normalizePDFAssetDirectory(directoryPath) {
+  const normalized = String(directoryPath).replaceAll("\\", "/");
+  return normalized.endsWith("/") ? normalized : `${normalized}/`;
+}
+
 function safeStem(filename) {
   const base = path.parse(filename).name;
   const value = base
@@ -175,15 +180,20 @@ async function extractPDF(sourcePath, displayName, maximumBytes, progress) {
       disableFontFace: true,
       isEvalSupported: false,
       useWorkerFetch: false,
-      standardFontDataUrl: fileURLToPath(new URL("./node_modules/pdfjs-dist/standard_fonts/", import.meta.url)) + path.sep,
-      wasmUrl: fileURLToPath(new URL("./node_modules/pdfjs-dist/wasm/", import.meta.url)) + path.sep,
+      standardFontDataUrl: normalizePDFAssetDirectory(
+        fileURLToPath(new URL("./node_modules/pdfjs-dist/standard_fonts/", import.meta.url)),
+      ),
+      wasmUrl: normalizePDFAssetDirectory(
+        fileURLToPath(new URL("./node_modules/pdfjs-dist/wasm/", import.meta.url)),
+      ),
     });
     document = await loadingTask.promise;
   } catch (error) {
     if (error?.name === "PasswordException") {
       throw new AnalysisError("locked_pdf", `“${displayName}”已加密或被密码保护，无法解析。`);
     }
-    throw new AnalysisError("unreadable", `无法读取“${displayName}”。`);
+    const detail = error instanceof Error && error.message ? `（${error.message}）` : "";
+    throw new AnalysisError("unreadable", `无法读取“${displayName}”。${detail}`);
   }
 
   const accumulator = new TextAccumulator(maximumBytes);

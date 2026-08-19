@@ -7,7 +7,12 @@ import test from "node:test";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 
-import { AnalysisError, createSession, documentKind } from "../file-analysis.mjs";
+import {
+  AnalysisError,
+  createSession,
+  documentKind,
+  normalizePDFAssetDirectory,
+} from "../file-analysis.mjs";
 
 async function withWorkspace(body) {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "desktop-pet-file-analysis-"));
@@ -46,6 +51,14 @@ test("recognizes the Windows format allowlist and rejects legacy XLS", () => {
   assert.equal(documentKind("notes.md"), "text");
   assert.equal(documentKind("Dockerfile"), "text");
   assert.equal(documentKind("legacy.xls"), null);
+});
+
+test("normalizes PDF.js asset directories for Windows", () => {
+  assert.equal(
+    normalizePDFAssetDirectory("D:\\a\\PetHarness\\node_modules\\pdfjs-dist\\wasm\\"),
+    "D:/a/PetHarness/node_modules/pdfjs-dist/wasm/",
+  );
+  assert.equal(normalizePDFAssetDirectory("/opt/pdfjs/wasm/"), "/opt/pdfjs/wasm/");
 });
 
 test("creates an Excel session with sheets, dates, booleans, formulas, and cached results", async () => {
