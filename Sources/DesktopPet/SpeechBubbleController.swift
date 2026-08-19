@@ -6,6 +6,8 @@ struct SpeechBubbleLayoutSnapshot {
     let textViewFrame: CGRect
     let textContainerSize: CGSize
     let usedTextRect: CGRect
+    let displayedText: String
+    let isStreaming: Bool
 }
 
 final class SpeechBubbleController {
@@ -17,6 +19,9 @@ final class SpeechBubbleController {
     private let toolStatusLabel = NSTextField(labelWithString: "")
     private var isToolStatusVisible = false
     private var prefersWideLayout = false
+    private var streamingText: String?
+    private var streamingReachedMaximumHeight = false
+    private var streamingBaseHeight: CGFloat = 82
 
     init() {
         panel = NSPanel(
@@ -83,6 +88,9 @@ final class SpeechBubbleController {
     var isVisible: Bool { panel.isVisible }
 
     func show(text: String, anchoredTo anchorWindow: NSWindow, followLatest: Bool = false) {
+        streamingText = nil
+        streamingReachedMaximumHeight = false
+        streamingBaseHeight = 82
         let segments = MarkdownTableParser.parse(text)
         prefersWideLayout = segments.contains { segment in
             if case .table = segment { return true }
@@ -97,6 +105,31 @@ final class SpeechBubbleController {
         } else {
             textView.scrollToBeginningOfDocument(nil)
         }
+        reposition(anchoredTo: anchorWindow)
+        panel.orderFrontRegardless()
+    }
+
+    func showStreaming(text: String, anchoredTo anchorWindow: NSWindow) {
+        let previousText = streamingText
+        if previousText == nil {
+            prefersWideLayout = false
+            prepareTextLayoutWidth()
+        }
+
+        if let previousText, text.hasPrefix(previousText) {
+            let suffix = String(text.dropFirst(previousText.count))
+            if !suffix.isEmpty {
+                textView.textStorage?.append(renderPlainText(suffix))
+            }
+        } else {
+            textView.textStorage?.setAttributedString(renderPlainText(text))
+            streamingReachedMaximumHeight = false
+            streamingBaseHeight = 82
+        }
+        streamingText = text
+
+        relayoutStreamingContent()
+        textView.scrollToEndOfDocument(nil)
         reposition(anchoredTo: anchorWindow)
         panel.orderFrontRegardless()
     }
@@ -116,7 +149,11 @@ final class SpeechBubbleController {
         } else {
             toolProgressIndicator.stopAnimation(nil)
         }
-        relayoutContent()
+        if streamingText == nil {
+            relayoutContent()
+        } else {
+            relayoutStreamingContent()
+        }
         reposition(anchoredTo: anchorWindow)
         if isToolStatusVisible { panel.orderFrontRegardless() }
     }
@@ -139,6 +176,9 @@ final class SpeechBubbleController {
         textView.string = ""
         isToolStatusVisible = false
         prefersWideLayout = false
+        streamingText = nil
+        streamingReachedMaximumHeight = false
+        streamingBaseHeight = 82
         toolStatusBar.isHidden = true
         toolProgressIndicator.stopAnimation(nil)
     }
@@ -163,7 +203,23 @@ final class SpeechBubbleController {
             scrollContentSize: scrollView.contentSize,
             textViewFrame: textView.frame,
             textContainerSize: textView.textContainer?.containerSize ?? .zero,
-            usedTextRect: usedTextRect()
+            usedTextRect: usedTextRect(),
+            displayedText: textView.string,
+            isStreaming: streamingText != nil
+        )
+    }
+
+    private func renderPlainText(_ text: String) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 3
+        paragraph.paragraphSpacing = 5
+        return NSAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 15, weight: .medium),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: paragraph
+            ]
         )
     }
 
@@ -369,6 +425,29 @@ final class SpeechBubbleController {
             + textView.textContainerInset.height * 2
         synchronizeTextViewGeometry(documentHeight: documentHeight)
         invalidateAndEnsureTextLayout()
+    }
+
+    private func relayoutStreamingContent() {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer
+        else { return }
+
+        let textRange = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
+        layoutManager.ensureLayout(forCharacterRange: textRange)
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        if !streamingReachedMaximumHeight {
+            streamingBaseHeight = min(max(82, ceil(usedRect.height) + 38), 240)
+            streamingReachedMaximumHeight = streamingBaseHeight >= 240
+        }
+        let panelHeight = streamingBaseHeight + (isToolStatusVisible ? 30 : 0)
+        if abs(panel.frame.height - panelHeight) > 0.5 {
+            panel.setContentSize(CGSize(width: preferredPanelWidth, height: panelHeight))
+        }
+        layoutContent()
+
+        let documentHeight = ceil(usedRect.maxY)
+            + textView.textContainerInset.height * 2
+        synchronizeTextViewGeometry(documentHeight: documentHeight)
     }
 
     private func synchronizeTextViewGeometry(documentHeight: CGFloat?) {

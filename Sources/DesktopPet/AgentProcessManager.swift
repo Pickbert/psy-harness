@@ -80,6 +80,7 @@ enum AgentRuntimeError: LocalizedError {
 
 final class AgentProcessManager {
     typealias ApprovalHandler = (AgentApprovalRequest, @escaping (AgentApprovalDecision) -> Void) -> Void
+    private static let transcriptFlushInterval: TimeInterval = 0.08
 
     static var platformSupported: Bool {
         #if arch(arm64)
@@ -126,6 +127,9 @@ final class AgentProcessManager {
     private var promptTracker = AgentPromptNotificationTracker()
     private var streamedText = ""
     private var finalText = ""
+    private var transcriptDeliveryGate = AgentTranscriptDeliveryGate()
+    private var transcriptFlushWorkItem: DispatchWorkItem?
+    private var transcriptFlushGeneration: Int?
     private var lastTurnError: String?
     private var lastTurnFailureKind: String?
     private var pluginSnapshot: AgentRuntimePluginSnapshot?
@@ -215,6 +219,7 @@ final class AgentProcessManager {
             self.activeSessionID = sessionID
             self.activeCompletion = completion
             self.promptTracker.reset()
+            self.invalidateTranscriptDeliveryLocked()
             self.streamedText = ""
             self.finalText = ""
             self.lastTurnError = nil
@@ -598,7 +603,7 @@ final class AgentProcessManager {
                chunk["type"] as? String == "text-delta",
                let text = chunk["text"] as? String {
                 streamedText += text
-                emitTranscript(streamedText)
+                enqueueTranscriptLocked(streamedText)
             }
         case "assistant/message":
             if let message = data["message"] as? [String: Any],
@@ -606,7 +611,6 @@ final class AgentProcessManager {
                 finalText = content.compactMap { block in
                     block["type"] as? String == "text" ? block["text"] as? String : nil
                 }.joined()
-                if !finalText.isEmpty { emitTranscript(finalText) }
             }
         case "tool/call":
             let callID = data["callId"] as? String ?? ""
@@ -674,6 +678,7 @@ final class AgentProcessManager {
         toolCalls.removeAll()
         activeToolCallID = nil
         pluginSnapshot = nil
+        invalidateTranscriptDeliveryLocked()
         emitToolExecutionState(.idle)
     }
 
@@ -691,11 +696,57 @@ final class AgentProcessManager {
         activeCompletion = nil
         activeSessionID = nil
         promptTracker.reset()
+        invalidateTranscriptDeliveryLocked()
         completeOnMain(completion, with: result)
     }
 
-    private func emitTranscript(_ text: String) {
-        DispatchQueue.main.async { self.onTranscript?(text) }
+    private func enqueueTranscriptLocked(_ text: String) {
+        if transcriptDeliveryGate.update(text: text) {
+            scheduleTranscriptFlushLocked(generation: transcriptDeliveryGate.generation)
+        }
+    }
+
+    private func scheduleTranscriptFlushLocked(generation: Int) {
+        transcriptFlushWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.deliverTranscriptLocked(expectedGeneration: generation)
+        }
+        transcriptFlushWorkItem = workItem
+        transcriptFlushGeneration = generation
+        queue.asyncAfter(
+            deadline: .now() + Self.transcriptFlushInterval,
+            execute: workItem
+        )
+    }
+
+    private func deliverTranscriptLocked(expectedGeneration: Int) {
+        if transcriptFlushGeneration == expectedGeneration {
+            transcriptFlushWorkItem = nil
+            transcriptFlushGeneration = nil
+        }
+        guard let delivery = transcriptDeliveryGate.takeScheduledDelivery(
+            expectedGeneration: expectedGeneration
+        ) else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.onTranscript?(delivery.text)
+            self.queue.async {
+                self.acknowledgeTranscriptDeliveryLocked(delivery)
+            }
+        }
+    }
+
+    private func acknowledgeTranscriptDeliveryLocked(_ delivery: AgentTranscriptDelivery) {
+        guard transcriptDeliveryGate.acknowledge(delivery) else { return }
+        scheduleTranscriptFlushLocked(generation: transcriptDeliveryGate.generation)
+    }
+
+    private func invalidateTranscriptDeliveryLocked() {
+        transcriptFlushWorkItem?.cancel()
+        transcriptFlushWorkItem = nil
+        transcriptFlushGeneration = nil
+        transcriptDeliveryGate.invalidateGeneration()
     }
 
     private func emitActivity(_ text: String) {

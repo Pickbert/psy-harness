@@ -128,7 +128,7 @@ final class PetController: NSObject {
         }
 
         agentManager.onTranscript = { [weak self] text in
-            self?.showSpeech(text, duration: nil, followLatest: true)
+            self?.showStreamingSpeech(text)
         }
         agentManager.onActivity = { [weak self] text in
             self?.showSpeech(text, duration: 6)
@@ -1120,6 +1120,11 @@ final class PetController: NSObject {
     private func showSpeech(_ text: String, duration: TimeInterval?, followLatest: Bool = false) {
         speechBubble.show(text: text, anchoredTo: window, followLatest: followLatest)
         bubbleDismissAt = duration.map { ProcessInfo.processInfo.systemUptime + $0 }
+    }
+
+    private func showStreamingSpeech(_ text: String) {
+        speechBubble.showStreaming(text: text, anchoredTo: window)
+        bubbleDismissAt = nil
     }
 
     private func showError(_ error: Error) {

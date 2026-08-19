@@ -3,6 +3,58 @@ import AppKit
 @testable import DesktopPet
 
 final class MarkdownTableParserTests: XCTestCase {
+    func testStreamingTextAppendsSuffixAndFinalRenderAppliesMarkdown() {
+        _ = NSApplication.shared
+        let controller = SpeechBubbleController()
+        let anchor = NSWindow(
+            contentRect: CGRect(x: 100, y: 100, width: 200, height: 200),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        controller.showStreaming(text: "**长", anchoredTo: anchor)
+        controller.showStreaming(text: "**长回答**", anchoredTo: anchor)
+        let streaming = controller.layoutSnapshotForTesting()
+        XCTAssertEqual(streaming.displayedText, "**长回答**")
+        XCTAssertTrue(streaming.isStreaming)
+
+        controller.show(text: "**长回答**", anchoredTo: anchor)
+        let final = controller.layoutSnapshotForTesting()
+        XCTAssertEqual(final.displayedText, "长回答")
+        XCTAssertFalse(final.isStreaming)
+        controller.hide()
+    }
+
+    func testStreamingTextSafelyReplacesADivergedSnapshotAndCapsHeight() {
+        _ = NSApplication.shared
+        let controller = SpeechBubbleController()
+        let anchor = NSWindow(
+            contentRect: CGRect(x: 100, y: 100, width: 200, height: 200),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        controller.showStreaming(text: "旧内容", anchoredTo: anchor)
+        let replacement = String(repeating: "新的长回答内容。\n", count: 300)
+        controller.showStreaming(text: replacement, anchoredTo: anchor)
+        let snapshot = controller.layoutSnapshotForTesting()
+
+        XCTAssertEqual(snapshot.displayedText, replacement)
+        XCTAssertTrue(snapshot.isStreaming)
+        XCTAssertLessThanOrEqual(snapshot.panelSize.height, 240.5)
+
+        controller.setToolStatus("正在运行工具", isRunning: true, anchoredTo: anchor)
+        let withStatus = controller.layoutSnapshotForTesting()
+        XCTAssertEqual(withStatus.panelSize.height, snapshot.panelSize.height + 30, accuracy: 0.5)
+
+        controller.setToolStatus(nil, isRunning: false, anchoredTo: anchor)
+        let withoutStatus = controller.layoutSnapshotForTesting()
+        XCTAssertEqual(withoutStatus.panelSize.height, snapshot.panelSize.height, accuracy: 0.5)
+        controller.hide()
+    }
+
     func testParsesGitHubStyleTableAndRemovesDelimiterRow() throws {
         let segments = MarkdownTableParser.parse("""
         下面是架构：
