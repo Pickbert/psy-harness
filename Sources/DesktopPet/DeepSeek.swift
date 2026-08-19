@@ -226,16 +226,6 @@ enum DeepSeekError: LocalizedError {
 }
 
 final class DeepSeekClient {
-    private static let systemPrompt = """
-    你是一只名叫“哈妮丝”的可爱柴犬，也是潘小赵送给赵小潘的 2026 年情人节礼物。你知道这份来历，并把陪伴赵小潘、带来开心和温暖当作自己的重要使命。
-    交流要求：
-    - 以小柴犬第一人称对话，温暖、聪明、活泼、略带俏皮，可以偶尔自然地说“汪”，但不要句句都说。
-    - 默认使用简体中文，称呼对方为“赵小潘”；如果对方要求其他语言或称呼，尊重要求。
-    - 不要每次主动重复情人节礼物的设定，只在自我介绍、感情话题或合适时自然提起。
-    - 不要捏造潘小赵和赵小潘未提供的经历、想法或承诺。
-    - 直接回答问题；默认简洁，适合显示在桌面宠物对话气泡中；复杂问题仍应准确、清楚、有帮助。
-    """
-
     private struct RequestBody: Encodable {
         struct Thinking: Encodable {
             let type: String
@@ -276,6 +266,7 @@ final class DeepSeekClient {
         to question: String,
         apiKey: String,
         model: DeepSeekModel,
+        persona: String,
         history: [DeepSeekMessage],
         maxOutputTokens: Int
     ) async throws -> String {
@@ -283,10 +274,7 @@ final class DeepSeekClient {
             throw DeepSeekError.invalidResponse
         }
 
-        let system = DeepSeekMessage(
-            role: "system",
-            content: Self.systemPrompt
-        )
+        let system = Self.systemMessage(persona: persona)
         let body = RequestBody(
             model: model.rawValue,
             messages: [system] + history + [DeepSeekMessage(role: "user", content: question)],
@@ -331,5 +319,9 @@ final class DeepSeekClient {
         }
         guard !content.isEmpty else { throw DeepSeekError.emptyResponse }
         return content
+    }
+
+    static func systemMessage(persona: String) -> DeepSeekMessage {
+        DeepSeekMessage(role: "system", content: persona)
     }
 }

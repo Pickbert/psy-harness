@@ -21,6 +21,26 @@ final class ChatInputControllerTests: XCTestCase {
         XCTAssertFalse(secondCompletionCalled)
     }
 
+    func testRepeatedPromptRecoversAnOrderedOutPanelWithoutReplacingCompletion() {
+        _ = NSApplication.shared
+        let controller = ChatInputController()
+        var firstResults: [String?] = []
+        var secondCompletionCalled = false
+
+        XCTAssertTrue(controller.prompt(on: nil) { firstResults.append($0) })
+        controller.panelForTesting.orderOut(nil)
+        XCTAssertFalse(controller.isVisible)
+
+        XCTAssertFalse(controller.prompt(on: nil) { _ in secondCompletionCalled = true })
+        XCTAssertTrue(controller.isVisible)
+
+        controller.cancelPrompt()
+
+        XCTAssertEqual(firstResults.count, 1)
+        XCTAssertNil(firstResults[0])
+        XCTAssertFalse(secondCompletionCalled)
+    }
+
     func testChatStartGateBlocksWhileFileAnalysisIsPreparing() {
         XCTAssertEqual(
             ChatStartGate.blockMessage(

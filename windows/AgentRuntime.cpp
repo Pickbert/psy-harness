@@ -43,6 +43,17 @@ std::wstring WideFromUtf8(const std::string& value) {
     return result;
 }
 
+std::string TrimAsciiWhitespace(std::string value) {
+    auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char character) {
+        return std::isspace(character) != 0;
+    });
+    auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char character) {
+        return std::isspace(character) != 0;
+    }).base();
+    if (first >= last) return {};
+    return std::string(first, last);
+}
+
 std::wstring WideFromProcessText(const std::string& value) {
     if (value.empty()) return {};
     int size = MultiByteToWideChar(
@@ -439,11 +450,17 @@ bool AgentRuntime::Start(
         error = L"无法创建 Agent Skill 目录：" + WideFromUtf8(filesystemError.message());
         return false;
     }
-    std::string systemPrompt = ReadUtf8File(promptPath);
-    if (systemPrompt.empty()) {
+    const std::string fixedRules = TrimAsciiWhitespace(ReadUtf8File(promptPath));
+    const std::string persona = TrimAsciiWhitespace(Utf8FromWide(configuration.persona));
+    if (fixedRules.empty()) {
         error = L"无法读取 Agent 系统提示词。";
         return false;
     }
+    if (persona.empty()) {
+        error = L"狗狗人设不能为空。";
+        return false;
+    }
+    const std::string systemPrompt = persona + "\n\n" + fixedRules;
 
     SECURITY_ATTRIBUTES attributes{};
     attributes.nLength = sizeof(attributes);

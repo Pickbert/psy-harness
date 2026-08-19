@@ -10,6 +10,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
     private let inputField = NSTextField()
     private let hintLabel = NSTextField(labelWithString: "")
     private var completion: ((String?) -> Void)?
+    private var presentationGeneration = 0
 
     override init() {
         panel = ChatInputPanel(
@@ -24,27 +25,73 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
 
     var isVisible: Bool { panel.isVisible }
 
+#if DEBUG
+    var panelForTesting: NSPanel { panel }
+#endif
+
     @discardableResult
     func prompt(
         on screen: NSScreen?,
         attachments: [String] = [],
         completion: @escaping (String?) -> Void
     ) -> Bool {
-        if panel.isVisible {
-            NSApp.activate(ignoringOtherApps: true)
-            panel.makeKeyAndOrderFront(nil)
-            panel.makeFirstResponder(inputField)
-            return false
+        let startedNewPrompt = self.completion == nil
+        if startedNewPrompt {
+            self.completion = completion
+            inputField.stringValue = ""
         }
 
-        self.completion = completion
-        inputField.stringValue = ""
         updateContext(attachments: attachments)
-        position(on: screen ?? NSScreen.main ?? NSScreen.screens.first)
+        presentPanel(on: screen ?? NSScreen.main ?? NSScreen.screens.first)
+        return startedNewPrompt
+    }
+
+    private func presentPanel(on screen: NSScreen?) {
+        presentationGeneration += 1
+        let generation = presentationGeneration
+
+        forcePanelToFront(on: screen)
+
+        // App activation after a cross-application drag is asynchronous. Reasserting
+        // presentation on the next run loop prevents AppKit from leaving this
+        // accessory-app panel ordered but inaccessible behind the source app.
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.completion != nil,
+                  self.presentationGeneration == generation
+            else { return }
+            self.forcePanelToFront(on: screen)
+        }
+
+        // Recover from a WindowServer state where isVisible is true even though the
+        // panel never became key, active-space-visible, or remained on screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self,
+                  self.completion != nil,
+                  self.presentationGeneration == generation,
+                  !self.isPanelAccessible(on: screen)
+            else { return }
+            self.forcePanelToFront(on: screen)
+        }
+    }
+
+    private func forcePanelToFront(on screen: NSScreen?) {
+        position(on: screen)
         NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+        panel.makeKey()
         panel.makeFirstResponder(inputField)
-        return true
+    }
+
+    private func isPanelAccessible(on screen: NSScreen?) -> Bool {
+        let targetFrame = screen?.visibleFrame
+            ?? panel.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+        let intersectsScreen = targetFrame.map { $0.intersects(panel.frame) } ?? panel.isVisible
+        return panel.isVisible
+            && panel.isKeyWindow
+            && panel.isOnActiveSpace
+            && intersectsScreen
     }
 
     private func configurePanel() {
@@ -187,6 +234,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
     }
 
     private func finish(with value: String?) {
+        presentationGeneration += 1
         let completion = self.completion
         self.completion = nil
         panel.orderOut(nil)

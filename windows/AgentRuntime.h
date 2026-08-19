@@ -60,6 +60,7 @@ struct AgentLaunchConfiguration {
     std::wstring workspace;
     std::wstring apiKey;
     std::wstring model;
+    std::wstring persona;
     int maxOutputTokens = 8192;
     unsigned int enabledPluginFlags = kDefaultAgentPluginFlags;
 };

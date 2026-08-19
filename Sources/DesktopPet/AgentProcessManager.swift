@@ -101,6 +101,7 @@ final class AgentProcessManager {
         let apiKey: String
         let model: DeepSeekModel
         let maxOutputTokens: Int
+        let persona: String
         let plugins: AgentPluginConfiguration
     }
 
@@ -155,6 +156,7 @@ final class AgentProcessManager {
         apiKey: String,
         model: DeepSeekModel,
         maxOutputTokens: Int,
+        persona: String,
         plugins: AgentPluginConfiguration,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
@@ -173,6 +175,7 @@ final class AgentProcessManager {
                self.launchConfiguration?.apiKey == apiKey,
                self.launchConfiguration?.model == model,
                self.launchConfiguration?.maxOutputTokens == normalizedMaxOutputTokens,
+               self.launchConfiguration?.persona == persona,
                self.launchConfiguration?.plugins == plugins {
                 self.completeOnMain(completion, with: .success(()))
                 return
@@ -183,6 +186,7 @@ final class AgentProcessManager {
                 apiKey: apiKey,
                 model: model,
                 maxOutputTokens: normalizedMaxOutputTokens,
+                persona: persona,
                 plugins: plugins
             )
             self.launchConfiguration = config
@@ -319,7 +323,11 @@ final class AgentProcessManager {
         let skillDirectory = config.plugins.isEnabled(.skills)
             ? try pluginStore.ensureSkillDirectory(in: config.workspace)
             : pluginStore.skillDirectoryURL(in: config.workspace)
-        let systemPrompt = try String(contentsOf: promptURL, encoding: .utf8)
+        let fixedRules = try String(contentsOf: promptURL, encoding: .utf8)
+        let systemPrompt = try AgentPersona.composeSystemPrompt(
+            persona: config.persona,
+            fixedRules: fixedRules
+        )
         let child = Process()
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()

@@ -60,30 +60,36 @@ BEGIN
     LTEXT           "Enter 发送  ·  Esc 关闭", -1, 10, 35, 150, 10
 END
 
-IDD_AGENT_PLUGIN_SETTINGS DIALOGEX 0, 0, 420, 282
+IDD_AGENT_PLUGIN_SETTINGS DIALOGEX 0, 0, 420, 425
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "哈妮丝 · 插件与技能"
+CAPTION "哈妮丝 · Agent 配置"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
-    LTEXT           "配置会在保存后重启 Agent，并通过 Harness 实际工具注册表校验。", IDC_PLUGIN_RUNTIME_STATUS, 14, 11, 392, 13
-    AUTOCHECKBOX    "本地技能库", IDC_PLUGIN_SKILLS, 16, 35, 170, 14, WS_TABSTOP
-    LTEXT           "加载工作目录 .desktop-pet/skills 中的技能。", -1, 34, 51, 265, 12
-    RTEXT           "", IDC_PLUGIN_SKILLS_STATUS, 302, 36, 104, 12
-    AUTOCHECKBOX    "任务清单", IDC_PLUGIN_TODO, 16, 79, 170, 14, WS_TABSTOP
-    LTEXT           "启用 todo_write，跟踪多步骤任务。", -1, 34, 95, 265, 12
-    RTEXT           "", IDC_PLUGIN_TODO_STATUS, 302, 80, 104, 12
-    AUTOCHECKBOX    "长期目标", IDC_PLUGIN_GOALS, 16, 123, 170, 14, WS_TABSTOP
-    LTEXT           "启用目标创建、查询和更新工具。", -1, 34, 139, 265, 12
-    RTEXT           "", IDC_PLUGIN_GOALS_STATUS, 302, 124, 104, 12
-    AUTOCHECKBOX    "DeepSeek 网页搜索", IDC_PLUGIN_WEB_SEARCH, 16, 167, 190, 14, WS_TABSTOP
-    LTEXT           "复用现有 API Key；会产生额外模型调用和 Token 消耗。", -1, 34, 183, 265, 12
-    RTEXT           "", IDC_PLUGIN_WEB_SEARCH_STATUS, 302, 168, 104, 12
-    CONTROL         "", -1, "STATIC", SS_ETCHEDHORZ, 14, 207, 392, 1
-    LTEXT           "", IDC_PLUGIN_SKILL_SUMMARY, 16, 218, 390, 13, SS_LEFT | SS_ENDELLIPSIS
-    PUSHBUTTON      "打开技能目录", IDC_PLUGIN_OPEN_SKILLS, 16, 248, 78, 19
-    PUSHBUTTON      "刷新状态", IDC_PLUGIN_REFRESH, 101, 248, 64, 19
-    PUSHBUTTON      "取消", IDCANCEL, 276, 248, 56, 19
-    DEFPUSHBUTTON   "保存并重启", IDOK, 338, 248, 68, 19
+    LTEXT           "人设同时用于普通对话和本地 Agent；固定安全规则不可编辑。", -1, 14, 10, 392, 13
+    LTEXT           "狗狗人设", -1, 14, 29, 100, 13
+    EDITTEXT        IDC_AGENT_PERSONA, 14, 45, 392, 82, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "恢复默认人设", IDC_AGENT_PERSONA_RESET, 14, 135, 82, 19
+    RTEXT           "", IDC_AGENT_PERSONA_COUNT, 260, 139, 146, 12
+    CONTROL         "", -1, "STATIC", SS_ETCHEDHORZ, 14, 161, 392, 1
+    LTEXT           "配置会在保存后重启 Agent，并校验 Harness 实际插件状态。", IDC_PLUGIN_RUNTIME_STATUS, 14, 170, 392, 13
+    AUTOCHECKBOX    "本地技能库", IDC_PLUGIN_SKILLS, 16, 193, 170, 14, WS_TABSTOP
+    LTEXT           "加载工作目录 .desktop-pet/skills 中的技能。", -1, 34, 209, 265, 12
+    RTEXT           "", IDC_PLUGIN_SKILLS_STATUS, 302, 194, 104, 12
+    AUTOCHECKBOX    "任务清单", IDC_PLUGIN_TODO, 16, 233, 170, 14, WS_TABSTOP
+    LTEXT           "启用 todo_write，跟踪多步骤任务。", -1, 34, 249, 265, 12
+    RTEXT           "", IDC_PLUGIN_TODO_STATUS, 302, 234, 104, 12
+    AUTOCHECKBOX    "长期目标", IDC_PLUGIN_GOALS, 16, 273, 170, 14, WS_TABSTOP
+    LTEXT           "启用目标创建、查询和更新工具。", -1, 34, 289, 265, 12
+    RTEXT           "", IDC_PLUGIN_GOALS_STATUS, 302, 274, 104, 12
+    AUTOCHECKBOX    "DeepSeek 网页搜索", IDC_PLUGIN_WEB_SEARCH, 16, 313, 190, 14, WS_TABSTOP
+    LTEXT           "复用现有 API Key；会产生额外模型调用和 Token 消耗。", -1, 34, 329, 265, 12
+    RTEXT           "", IDC_PLUGIN_WEB_SEARCH_STATUS, 302, 314, 104, 12
+    CONTROL         "", -1, "STATIC", SS_ETCHEDHORZ, 14, 353, 392, 1
+    LTEXT           "", IDC_PLUGIN_SKILL_SUMMARY, 16, 365, 390, 13, SS_LEFT | SS_ENDELLIPSIS
+    PUSHBUTTON      "打开技能目录", IDC_PLUGIN_OPEN_SKILLS, 16, 396, 78, 19
+    PUSHBUTTON      "刷新状态", IDC_PLUGIN_REFRESH, 101, 396, 64, 19
+    PUSHBUTTON      "取消", IDCANCEL, 276, 396, 56, 19
+    DEFPUSHBUTTON   "保存并重启", IDOK, 338, 396, 68, 19
 END
 
 IDD_WAITING_SETTINGS DIALOGEX 0, 0, 264, 88

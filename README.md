@@ -71,6 +71,8 @@ Get-FileHash .\DesktopPet-Windows-v0.7.1-Agent-x64-Setup.exe -Algorithm SHA256
 
 API Key 不会写入项目文件：macOS 使用系统钥匙串，Windows 使用 Windows 凭据管理器。普通对话和 Agent 都直接连接 DeepSeek 官方接口。
 
+完整 Agent 版可在“本地 Agent → Agent 配置…”中编辑狗狗人设并管理插件。人设默认沿用哈妮丝原有设定，在本机全局保存并同时用于普通 DeepSeek 对话和 Harness Agent；切换工作目录不会改变人设。保存后会开启新的对话上下文，并在条件允许时自动重启 Agent。“恢复默认人设”可随时还原内置内容。
+
 ### 拖拽文件分析
 
 将文件拖到完整 Agent 版的小狗身上，本地预处理完成后再输入总结、对比、提取数据等要求。文件会复制到所选工作目录下：
@@ -301,6 +303,7 @@ flowchart LR
 - 默认策略是 `workspace-write + ask`：读取可以自动进行，写入和命令需要确认。
 - “允许所有”只对当前 sidecar 运行期间的后续安全操作有效；更换目录、重启 Agent 或退出应用后失效。
 - 删除、提权、访问凭据、明显破坏性命令和结构化越界路径始终拒绝。
+- 用户人设只负责身份、语气和交流偏好；工作区、审批、禁止删除和凭据保护规则由应用固定拼接，不能在 Agent 配置中覆盖。
 - macOS sidecar 是 App 监管的独立进程；Windows 使用匿名管道和 Job Object，确保主程序退出时回收 sidecar 及其子进程。
 - 本地 Skill 只从所选工作目录的 `.desktop-pet/skills` 加载，不扫描用户级的 `~/.agents`、`~/.dsh` 等目录。
 - 外部 npm/GitHub 插件不会在运行时下载执行；新增插件必须固定版本、审核后重新构建。

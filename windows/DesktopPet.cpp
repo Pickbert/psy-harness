@@ -42,7 +42,8 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"DesktopPetWindowsClass";
 constexpr wchar_t kSpeechBubbleClass[] = L"DesktopPetSpeechBubbleClass";
 constexpr wchar_t kWindowTitle[] = L"哈妮丝";
-constexpr wchar_t kDeepSeekSystemPrompt[] =
+constexpr size_t kAgentPersonaMaximumCharacters = 4'000;
+constexpr wchar_t kDefaultAgentPersona[] =
     L"你是一只名叫“哈妮丝”的可爱柴犬，也是潘小赵送给赵小潘的 2026 年情人节礼物。"
     L"你知道这份来历，并把陪伴赵小潘、带来开心和温暖当作自己的重要使命。\n"
     L"交流要求：\n"
@@ -120,6 +121,7 @@ struct ChatDialogData {
 
 struct AgentPluginDialogData {
     unsigned int configuredFlags = desktop_pet::kDefaultAgentPluginFlags;
+    std::wstring persona = kDefaultAgentPersona;
 };
 
 class ScopedFlag {
@@ -137,7 +139,7 @@ private:
 enum class AgentStartupPurpose {
     None,
     Prompt,
-    PluginApply,
+    ConfigurationApply,
     ManualRestart
 };
 
@@ -286,6 +288,17 @@ std::wstring WideFromUtf8(const std::string& value) {
     std::wstring result(size, L'\0');
     MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), result.data(), size);
     return result;
+}
+
+std::wstring TrimmedAgentPersona(std::wstring value) {
+    auto first = std::find_if_not(value.begin(), value.end(), [](wchar_t character) {
+        return std::iswspace(character) != 0;
+    });
+    auto last = std::find_if_not(value.rbegin(), value.rend(), [](wchar_t character) {
+        return std::iswspace(character) != 0;
+    }).base();
+    if (first >= last) return {};
+    return std::wstring(first, last);
 }
 
 std::string JsonEscape(const std::string& value) {
@@ -549,24 +562,50 @@ std::wstring ReadDesktopPetRegistryString(const wchar_t* name) {
     return value;
 }
 
-void WriteDesktopPetRegistryString(const wchar_t* name, const std::wstring& value) {
+bool WriteDesktopPetRegistryString(const wchar_t* name, const std::wstring& value) {
     HKEY key = nullptr;
     if (RegCreateKeyExW(
             HKEY_CURRENT_USER, L"Software\\DesktopPet", 0, nullptr, 0,
             KEY_SET_VALUE, nullptr, &key, nullptr
         ) != ERROR_SUCCESS) {
-        return;
+        return false;
     }
-    RegSetValueExW(
+    LONG result = RegSetValueExW(
         key, name, 0, REG_SZ,
         reinterpret_cast<const BYTE*>(value.c_str()),
         static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t))
     );
     RegCloseKey(key);
+    return result == ERROR_SUCCESS;
 }
 
 void DeleteDesktopPetRegistryValue(const wchar_t* name) {
     RegDeleteKeyValueW(HKEY_CURRENT_USER, L"Software\\DesktopPet", name);
+}
+
+std::wstring ReadAgentPersona() {
+    std::wstring persona = TrimmedAgentPersona(ReadDesktopPetRegistryString(L"AgentPersona"));
+    if (persona.empty() || persona.size() > kAgentPersonaMaximumCharacters) {
+        return kDefaultAgentPersona;
+    }
+    return persona;
+}
+
+bool ValidateAgentPersona(const std::wstring& rawPersona, std::wstring& persona, std::wstring& error) {
+    persona = TrimmedAgentPersona(rawPersona);
+    if (persona.empty()) {
+        error = L"狗狗人设不能为空。";
+        return false;
+    }
+    if (persona.size() > kAgentPersonaMaximumCharacters) {
+        error = L"狗狗人设不能超过 4000 个字符。";
+        return false;
+    }
+    return true;
+}
+
+bool SaveAgentPersona(const std::wstring& persona) {
+    return WriteDesktopPetRegistryString(L"AgentPersona", persona);
 }
 
 unsigned int ReadAgentPluginFlags() {
@@ -1070,11 +1109,12 @@ std::wstring WinHttpErrorMessage(const wchar_t* prefix) {
 std::string BuildDeepSeekRequestBody(
     const std::wstring& question,
     const std::wstring& model,
+    const std::wstring& persona,
     const std::vector<ChatMessage>& history
 ) {
     std::string body = "{\"model\":\"" + JsonEscape(Utf8FromWide(model)) + "\",\"messages\":[";
     body += "{\"role\":\"system\",\"content\":\"";
-    body += JsonEscape(Utf8FromWide(kDeepSeekSystemPrompt));
+    body += JsonEscape(Utf8FromWide(persona));
     body += "\"}";
     for (const ChatMessage& message : history) {
         body += ",{\"role\":\"" + JsonEscape(message.role) + "\",\"content\":\"" +
@@ -1089,6 +1129,7 @@ bool CallDeepSeek(
     const std::wstring& question,
     const std::wstring& apiKey,
     const std::wstring& model,
+    const std::wstring& persona,
     const std::vector<ChatMessage>& history,
     std::wstring& result
 ) {
@@ -1128,7 +1169,7 @@ bool CallDeepSeek(
         return false;
     }
 
-    std::string body = BuildDeepSeekRequestBody(question, model, history);
+    std::string body = BuildDeepSeekRequestBody(question, model, persona, history);
     std::wstring headers = L"Content-Type: application/json\r\nAuthorization: Bearer " + apiKey + L"\r\n";
     BOOL sent = WinHttpSendRequest(
         request,
@@ -1463,6 +1504,28 @@ void OpenAgentSkillDirectory(HWND owner) {
     }
 }
 
+std::wstring DialogItemText(HWND dialog, int controlId) {
+    HWND control = GetDlgItem(dialog, controlId);
+    if (!control) return {};
+    const int length = GetWindowTextLengthW(control);
+    std::wstring value(static_cast<size_t>(length) + 1, L'\0');
+    const int copied = GetWindowTextW(control, value.data(), length + 1);
+    value.resize(static_cast<size_t>(std::max(copied, 0)));
+    return value;
+}
+
+void RefreshAgentPersonaCharacterCount(HWND dialog) {
+    const std::wstring rawPersona = DialogItemText(dialog, IDC_AGENT_PERSONA);
+    const size_t count = rawPersona.size();
+    const std::wstring text = std::to_wstring(count) + L" / " +
+        std::to_wstring(kAgentPersonaMaximumCharacters);
+    SetDlgItemTextW(dialog, IDC_AGENT_PERSONA_COUNT, text.c_str());
+    EnableWindow(
+        GetDlgItem(dialog, IDOK),
+        !TrimmedAgentPersona(rawPersona).empty() && count <= kAgentPersonaMaximumCharacters
+    );
+}
+
 INT_PTR CALLBACK AgentPluginSettingsDialogProcedure(
     HWND dialog,
     UINT message,
@@ -1482,6 +1545,18 @@ INT_PTR CALLBACK AgentPluginSettingsDialogProcedure(
             LR_DEFAULTCOLOR | LR_SHARED
         ));
         if (dialogIcon) SendMessageW(dialog, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(dialogIcon));
+        SendDlgItemMessageW(
+            dialog,
+            IDC_AGENT_PERSONA,
+            EM_SETLIMITTEXT,
+            static_cast<WPARAM>(kAgentPersonaMaximumCharacters),
+            0
+        );
+        SetDlgItemTextW(
+            dialog,
+            IDC_AGENT_PERSONA,
+            data ? data->persona.c_str() : kDefaultAgentPersona
+        );
         for (const AgentPluginUiEntry& entry : kAgentPluginUiEntries) {
             CheckDlgButton(
                 dialog,
@@ -1489,12 +1564,22 @@ INT_PTR CALLBACK AgentPluginSettingsDialogProcedure(
                 data && (data->configuredFlags & entry.flag) != 0 ? BST_CHECKED : BST_UNCHECKED
             );
         }
+        RefreshAgentPersonaCharacterCount(dialog);
         RefreshAgentPluginDialog();
         if (g_agentRuntime && g_agentRuntime->IsReady()) RequestAgentPluginStatus();
         return TRUE;
     }
     if (message == WM_COMMAND) {
         const UINT command = LOWORD(wParam);
+        if (command == IDC_AGENT_PERSONA && HIWORD(wParam) == EN_CHANGE) {
+            RefreshAgentPersonaCharacterCount(dialog);
+            return TRUE;
+        }
+        if (command == IDC_AGENT_PERSONA_RESET) {
+            SetDlgItemTextW(dialog, IDC_AGENT_PERSONA, kDefaultAgentPersona);
+            RefreshAgentPersonaCharacterCount(dialog);
+            return TRUE;
+        }
         if (command == IDC_PLUGIN_SKILLS || command == IDC_PLUGIN_TODO ||
             command == IDC_PLUGIN_GOALS || command == IDC_PLUGIN_WEB_SEARCH) {
             RefreshAgentPluginDialog();
@@ -1513,17 +1598,28 @@ INT_PTR CALLBACK AgentPluginSettingsDialogProcedure(
             auto* data = reinterpret_cast<AgentPluginDialogData*>(
                 GetWindowLongPtrW(dialog, DWLP_USER)
             );
+            std::wstring persona;
+            std::wstring validationError;
+            if (!ValidateAgentPersona(
+                    DialogItemText(dialog, IDC_AGENT_PERSONA), persona, validationError
+                )) {
+                MessageBoxW(dialog, validationError.c_str(), kWindowTitle, MB_OK | MB_ICONWARNING);
+                return TRUE;
+            }
             const unsigned int flags = PluginFlagsFromDialog(dialog);
-            if (!SaveAgentPluginFlags(flags)) {
+            if (!SaveAgentPersona(persona) || !SaveAgentPluginFlags(flags)) {
                 MessageBoxW(
                     dialog,
-                    L"无法保存插件设置，请检查当前账户的注册表权限。",
+                    L"无法保存 Agent 配置，请检查当前账户的注册表权限。",
                     kWindowTitle,
                     MB_OK | MB_ICONERROR
                 );
                 return TRUE;
             }
-            if (data) data->configuredFlags = flags;
+            if (data) {
+                data->configuredFlags = flags;
+                data->persona = persona;
+            }
             EndDialog(dialog, IDOK);
             return TRUE;
         }
@@ -1538,9 +1634,10 @@ INT_PTR CALLBACK AgentPluginSettingsDialogProcedure(
     return FALSE;
 }
 
-bool ShowAgentPluginSettings(unsigned int& configuredFlags) {
+bool ShowAgentPluginSettings(unsigned int& configuredFlags, std::wstring& persona) {
     AgentPluginDialogData data;
     data.configuredFlags = configuredFlags;
+    data.persona = persona;
     SetForegroundWindow(g_window);
     INT_PTR result = DialogBoxParamW(
         g_instance,
@@ -1551,6 +1648,7 @@ bool ShowAgentPluginSettings(unsigned int& configuredFlags) {
     );
     if (result != IDOK) return false;
     configuredFlags = data.configuredFlags;
+    persona = data.persona;
     return true;
 }
 
@@ -2106,6 +2204,7 @@ bool StartAgentPrompt(
     configuration.workspace = workspace;
     configuration.apiKey = apiKey;
     configuration.model = model;
+    configuration.persona = ReadAgentPersona();
     configuration.maxOutputTokens = 8192;
     configuration.enabledPluginFlags = ReadAgentPluginFlags();
     g_agentStartupPurpose = AgentStartupPurpose::Prompt;
@@ -2144,6 +2243,7 @@ bool RestartConfiguredAgent(AgentStartupPurpose purpose, std::wstring& error) {
     configuration.workspace = workspace;
     configuration.apiKey = apiKey;
     configuration.model = ReadDeepSeekModel();
+    configuration.persona = ReadAgentPersona();
     configuration.maxOutputTokens = 8192;
     configuration.enabledPluginFlags = ReadAgentPluginFlags();
     g_agentStartupPurpose = purpose;
@@ -2448,13 +2548,16 @@ void StartDeepSeekChat() {
         history = g_conversationHistory;
     }
     HWND resultWindow = g_window;
+    const std::wstring persona = ReadAgentPersona();
     g_requestInFlight = true;
     ShowSpeechBubble(L"让我想一想…", -1);
 
-    std::thread([question, apiKey, model, history = std::move(history), resultWindow]() {
+    std::thread([question, apiKey, model, persona, history = std::move(history), resultWindow]() {
         auto* asyncResult = new DeepSeekAsyncResult{};
         asyncResult->question = question;
-        asyncResult->success = CallDeepSeek(question, apiKey, model, history, asyncResult->text);
+        asyncResult->success = CallDeepSeek(
+            question, apiKey, model, persona, history, asyncResult->text
+        );
         if (!PostMessageW(resultWindow, kDeepSeekResult, 0, reinterpret_cast<LPARAM>(asyncResult))) {
             delete asyncResult;
         }
@@ -2852,22 +2955,23 @@ void ToggleVisibility() {
     }
 }
 
-void ApplyAgentPluginConfiguration(unsigned int flags) {
+void ApplyAgentConfiguration(unsigned int flags) {
+    g_conversationHistory.clear();
     g_agentSessionID = NewAgentSessionID();
     const std::wstring workspace = ReadAgentWorkspace();
     const std::wstring apiKey = ReadDeepSeekApiKey();
     if (workspace.empty() || apiKey.empty()) {
         ShowSpeechBubble(
-            L"插件设置已保存：" + AgentPluginSummary(flags) +
+            L"Agent 配置已保存：" + AgentPluginSummary(flags) +
                 L"。将在配置 API Key 和工作目录后的下次 Agent 启动时生效。",
             9
         );
         return;
     }
-    ShowSpeechBubble(L"正在应用 Harness 插件设置…", -1);
+    ShowSpeechBubble(L"正在应用 Agent 配置…", -1);
     std::wstring error;
-    if (!RestartConfiguredAgent(AgentStartupPurpose::PluginApply, error)) {
-        ShowSpeechBubble(L"插件设置已保存，但 Agent 重启失败：" + error, 15);
+    if (!RestartConfiguredAgent(AgentStartupPurpose::ConfigurationApply, error)) {
+        ShowSpeechBubble(L"Agent 配置已保存，但 Agent 重启失败：" + error, 15);
     }
 }
 
@@ -2882,6 +2986,9 @@ void ShowAgentStatusSummary() {
     const std::wstring fileContext = g_activeFileAnalysisNames.empty()
         ? L"未启用"
         : JoinFileNames(g_activeFileAnalysisNames);
+    const std::wstring personaStatus = ReadAgentPersona() == kDefaultAgentPersona
+        ? L"默认"
+        : L"自定义";
     std::wstring actual = ActiveAgentPluginSummary();
     if (g_agentPluginStatusPending) actual = L"正在读取";
     if (!g_agentPluginStatusError.empty()) actual = g_agentPluginStatusError;
@@ -2891,6 +2998,7 @@ void ShowAgentStatusSummary() {
             L"\n文件分析：" + fileContext +
             L"\n审批模式：" + (g_agentAllowsAllSafeOperations ? L"允许本轮后续安全操作" : L"逐次确认") +
             L"\n最大输出 Token：8192" +
+            L"\n狗狗人设：" + personaStatus +
             L"\n已配置：" + AgentPluginSummary(ReadAgentPluginFlags()) +
             L"\nHarness 实际启用：" + actual,
         14
@@ -2986,7 +3094,8 @@ void HandleMenuCommand(UINT command) {
                 break;
             }
             unsigned int flags = ReadAgentPluginFlags();
-            if (ShowAgentPluginSettings(flags)) ApplyAgentPluginConfiguration(flags);
+            std::wstring persona = ReadAgentPersona();
+            if (ShowAgentPluginSettings(flags, persona)) ApplyAgentConfiguration(flags);
             break;
         }
         case kMenuAgentRestart: {
@@ -3111,7 +3220,7 @@ void ShowTrayMenu() {
             kMenuFileAnalysisClearCache, L"清除文件分析缓存");
         AppendMenuW(agentMenu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
-            kMenuAgentPlugins, L"插件与技能...");
+            kMenuAgentPlugins, L"Agent 配置...");
         AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
             kMenuAgentRestart, L"重启 Agent");
         AppendMenuW(agentMenu, MF_STRING, kMenuAgentStatus, L"查看 Agent 状态");
@@ -3251,7 +3360,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 g_agentPluginStatusPending = false;
                 g_agentPluginStatusError = L"插件状态读取超时，可点击“刷新状态”重试。";
                 RefreshAgentPluginDialog();
-                if (g_agentStartupPurpose == AgentStartupPurpose::PluginApply ||
+                if (g_agentStartupPurpose == AgentStartupPurpose::ConfigurationApply ||
                     g_agentStartupPurpose == AgentStartupPurpose::ManualRestart) {
                     ShowSpeechBubble(L"Agent 已启动，但 Harness 插件状态校验超时。", 10);
                     g_agentStartupPurpose = AgentStartupPurpose::None;
@@ -3410,11 +3519,11 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                             : event->text;
                     }
                     RefreshAgentPluginDialog();
-                    if (g_agentStartupPurpose == AgentStartupPurpose::PluginApply) {
+                    if (g_agentStartupPurpose == AgentStartupPurpose::ConfigurationApply) {
                         ShowSpeechBubble(
                             event->pluginStatusSucceeded
-                                ? L"插件设置已生效：" + AgentPluginSummary(ReadAgentPluginFlags())
-                                : L"插件设置已保存，但实际状态校验失败：" + g_agentPluginStatusError,
+                                ? L"Agent 配置已生效：" + AgentPluginSummary(ReadAgentPluginFlags())
+                                : L"Agent 配置已保存，但插件状态校验失败：" + g_agentPluginStatusError,
                             10
                         );
                         g_agentStartupPurpose = AgentStartupPurpose::None;

@@ -37,6 +37,7 @@ final class PetController: NSObject {
     private let agentManager = AgentProcessManager()
     private let agentWorkspaceStore = AgentWorkspaceStore()
     private let agentPluginStore = AgentPluginSettingsStore()
+    private let agentPersonaStore = AgentPersonaSettingsStore()
     private let fileAnalysisStore = FileAnalysisSessionStore()
     private let agentPanel = AgentTaskPanelController()
     private let speechBubble = SpeechBubbleController()
@@ -449,6 +450,7 @@ final class PetController: NSObject {
             apiKey: apiKey,
             model: settingsStore.selectedModel,
             maxOutputTokens: settingsStore.agentMaxOutputTokens,
+            persona: agentPersonaStore.persona,
             plugins: agentPluginStore.configuration
         ) { [weak self] result in
             switch result {
@@ -467,17 +469,18 @@ final class PetController: NSObject {
             "文件分析：\($0.displayNames.joined(separator: "、"))"
         } ?? "文件分析：未启用"
         let configured = agentPluginStore.configuration
+        let personaStatus = agentPersonaStore.persona == AgentPersona.defaultText ? "默认" : "自定义"
         let actual = AgentPluginID.allCases
             .filter { agentManager.runtimePluginSnapshot?.isActive($0) == true }
             .map(\.title)
             .joined(separator: "、")
         showSpeech(
-            "\(agentManager.statusText)\n工作目录：\(workspace)\n\(fileContext)\n审批模式：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n已配置：\(configured.displaySummary)\nHarness 实际启用：\(actual.isEmpty ? "未运行或无可选插件" : actual)",
+            "\(agentManager.statusText)\n工作目录：\(workspace)\n\(fileContext)\n审批模式：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n狗狗人设：\(personaStatus)\n已配置：\(configured.displaySummary)\nHarness 实际启用：\(actual.isEmpty ? "未运行或无可选插件" : actual)",
             duration: 12
         )
     }
 
-    @objc func configureAgentPlugins() {
+    @objc func configureAgentSettings() {
         recordUserInteraction()
         guard AgentProcessManager.platformSupported else {
             showSpeech("当前系统不启用本地 Agent 插件。", duration: 6)
@@ -491,11 +494,12 @@ final class PetController: NSObject {
         let pluginWorkspace = currentAgentWorkspace
         if let pluginWorkspace { activateSecurityScopedWorkspace(pluginWorkspace) }
         agentPluginSettingsController.show(
+            persona: agentPersonaStore.persona,
             configuration: agentPluginStore.configuration,
             workspace: pluginWorkspace,
             runtimeSnapshot: agentManager.runtimePluginSnapshot
-        ) { [weak self] configuration in
-            self?.applyAgentPluginConfiguration(configuration)
+        ) { [weak self] persona, configuration in
+            self?.applyAgentConfiguration(persona: persona, plugins: configuration)
         }
         agentManager.refreshPluginStatus { [weak self] result in
             if case let .success(snapshot) = result {
@@ -713,6 +717,7 @@ final class PetController: NSObject {
         isRequestInFlight = true
         showSpeech("让我想一想…", duration: nil)
         let model = settingsStore.selectedModel
+        let persona = agentPersonaStore.persona
         let history = Array(conversationHistory.suffix(10))
         let maxOutputTokens = settingsStore.directChatMaxOutputTokens
 
@@ -723,6 +728,7 @@ final class PetController: NSObject {
                     to: question,
                     apiKey: apiKey,
                     model: model,
+                    persona: persona,
                     history: history,
                     maxOutputTokens: maxOutputTokens
                 )
@@ -803,17 +809,24 @@ final class PetController: NSObject {
                         "文件已准备好：\(session.displayNames.joined(separator: "、"))\n请输入你希望我怎样分析。",
                         duration: 8
                     )
-                    self.chatInput.prompt(
-                        on: self.window.screen,
-                        attachments: session.displayNames
-                    ) { [weak self] question in
-                        guard let self, let question else { return }
-                        self.sendToAgent(
-                            question,
-                            workspace: workspace,
-                            sessionID: session.agentSessionID,
-                            fileSession: session
-                        )
+                    // Let the source application's drag session finish returning
+                    // focus before presenting our accessory-app input panel.
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self,
+                              self.activeFileAnalysisSession == session
+                        else { return }
+                        self.chatInput.prompt(
+                            on: self.window.screen,
+                            attachments: session.displayNames
+                        ) { [weak self] question in
+                            guard let self, let question else { return }
+                            self.sendToAgent(
+                                question,
+                                workspace: workspace,
+                                sessionID: session.agentSessionID,
+                                fileSession: session
+                            )
+                        }
                     }
                 case let .failure(error):
                     self.showError(error)
@@ -839,6 +852,7 @@ final class PetController: NSObject {
             apiKey: apiKey,
             model: settingsStore.selectedModel,
             maxOutputTokens: settingsStore.agentMaxOutputTokens,
+            persona: agentPersonaStore.persona,
             plugins: agentPluginStore.configuration
         ) { [weak self] result in
             guard let self else { return }
@@ -1011,29 +1025,38 @@ final class PetController: NSObject {
         }
     }
 
-    private func applyAgentPluginConfiguration(_ configuration: AgentPluginConfiguration) {
-        agentPluginStore.save(configuration)
+    private func applyAgentConfiguration(persona: String, plugins: AgentPluginConfiguration) {
+        let savedPersona: String
+        do {
+            savedPersona = try agentPersonaStore.save(persona)
+            agentPluginStore.save(plugins)
+        } catch {
+            showError(error)
+            return
+        }
+        conversationHistory.removeAll()
         resetAgentSession()
 
         guard let workspace = currentAgentWorkspace,
               let apiKey = settingsStore.apiKey()
         else {
-            showSpeech("插件设置已保存，将在下次启动 Agent 时生效。", duration: 7)
+            showSpeech("Agent 配置已保存，将在下次启动 Agent 时生效。", duration: 7)
             return
         }
 
         activateSecurityScopedWorkspace(workspace)
-        showSpeech("正在应用 Harness 插件设置…", duration: nil)
+        showSpeech("正在应用 Agent 配置…", duration: nil)
         agentManager.start(
             workspace: workspace,
             apiKey: apiKey,
             model: settingsStore.selectedModel,
             maxOutputTokens: settingsStore.agentMaxOutputTokens,
-            plugins: configuration
+            persona: savedPersona,
+            plugins: plugins
         ) { [weak self] result in
             switch result {
             case .success:
-                self?.showSpeech("插件设置已生效：\(configuration.displaySummary)", duration: 8)
+                self?.showSpeech("Agent 配置已生效：\(plugins.displaySummary)", duration: 8)
             case let .failure(error):
                 self?.showError(error)
             }
@@ -1080,7 +1103,7 @@ final class PetController: NSObject {
             ("停止当前任务", #selector(stopAgentTask)),
             ("结束文件分析", #selector(endFileAnalysis)),
             ("清除文件分析缓存", #selector(clearFileAnalysisCache)),
-            ("插件与技能…", #selector(configureAgentPlugins)),
+            ("Agent 配置…", #selector(configureAgentSettings)),
             ("重启 Agent", #selector(restartAgent)),
             ("查看 Agent 状态", #selector(showAgentStatus))
         ]

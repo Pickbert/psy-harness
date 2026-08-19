@@ -1,20 +1,23 @@
 import AppKit
 
-final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
+final class AgentPluginSettingsController: NSObject, NSWindowDelegate, NSTextViewDelegate {
     private let store: AgentPluginSettingsStore
     private let window: NSWindow
     private let statusLabel: NSTextField
     private let skillSummaryLabel: NSTextField
+    private let personaTextView = NSTextView(frame: .zero)
+    private let characterCountLabel = NSTextField(labelWithString: "")
+    private let saveButton = NSButton(title: "保存并重启", target: nil, action: nil)
     private var checkboxes: [AgentPluginID: NSButton] = [:]
     private var runtimeLabels: [AgentPluginID: NSTextField] = [:]
     private var runtimeSnapshot: AgentRuntimePluginSnapshot?
     private var workspace: URL?
-    private var onSave: ((AgentPluginConfiguration) -> Void)?
+    private var onSave: ((String, AgentPluginConfiguration) -> Void)?
 
     init(store: AgentPluginSettingsStore) {
         self.store = store
         window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 680, height: 520),
+            contentRect: CGRect(x: 0, y: 0, width: 680, height: 700),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -23,7 +26,7 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
         skillSummaryLabel = NSTextField(labelWithString: "")
         super.init()
 
-        window.title = "哈妮丝 · 插件与技能"
+        window.title = "哈妮丝 · Agent 配置"
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -31,14 +34,17 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
     }
 
     func show(
+        persona: String,
         configuration: AgentPluginConfiguration,
         workspace: URL?,
         runtimeSnapshot: AgentRuntimePluginSnapshot?,
-        onSave: @escaping (AgentPluginConfiguration) -> Void
+        onSave: @escaping (String, AgentPluginConfiguration) -> Void
     ) {
         self.runtimeSnapshot = runtimeSnapshot
         self.workspace = workspace
         self.onSave = onSave
+        personaTextView.string = persona
+        personaTextView.setSelectedRange(NSRange(location: 0, length: 0))
         for plugin in AgentPluginID.allCases {
             checkboxes[plugin]?.state = configuration.isEnabled(plugin) ? .on : .off
         }
@@ -47,9 +53,11 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
             : "状态来自正在运行的 DeepSeek Harness sidecar。"
         refreshSkillSummary()
         refreshRuntimeLabels()
+        refreshPersonaValidation()
         NSApp.activate(ignoringOtherApps: true)
         window.center()
         window.makeKeyAndOrderFront(nil)
+        personaTextView.scrollRangeToVisible(NSRange(location: 0, length: 0))
     }
 
     func updateRuntimeSnapshot(_ snapshot: AgentRuntimePluginSnapshot?) {
@@ -66,23 +74,69 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
         content.autoresizingMask = [.width, .height]
         window.contentView = content
 
-        let title = NSTextField(labelWithString: "插件与技能")
+        let title = NSTextField(labelWithString: "Agent 配置")
         title.font = .systemFont(ofSize: 24, weight: .bold)
-        title.frame = CGRect(x: 28, y: 466, width: 260, height: 32)
+        title.frame = CGRect(x: 28, y: 646, width: 260, height: 32)
         content.addSubview(title)
 
-        let subtitle = NSTextField(labelWithString: "这些开关直接控制 DeepSeek Harness 的 Cordis 插件组合。")
+        let subtitle = NSTextField(labelWithString: "人设同时用于普通对话和本地 Agent；固定安全规则不可编辑。")
         subtitle.font = .systemFont(ofSize: 13)
         subtitle.textColor = .secondaryLabelColor
-        subtitle.frame = CGRect(x: 28, y: 440, width: 620, height: 22)
+        subtitle.frame = CGRect(x: 28, y: 620, width: 620, height: 22)
         content.addSubview(subtitle)
+
+        let personaTitle = NSTextField(labelWithString: "狗狗人设")
+        personaTitle.font = .systemFont(ofSize: 15, weight: .semibold)
+        personaTitle.frame = CGRect(x: 28, y: 585, width: 200, height: 22)
+        content.addSubview(personaTitle)
+
+        let personaScrollView = NSScrollView(frame: CGRect(x: 28, y: 460, width: 624, height: 116))
+        personaScrollView.borderType = .bezelBorder
+        personaScrollView.hasVerticalScroller = true
+        personaScrollView.autohidesScrollers = true
+        personaTextView.frame = personaScrollView.contentView.bounds
+        personaTextView.autoresizingMask = [.width]
+        personaTextView.isVerticallyResizable = true
+        personaTextView.isHorizontallyResizable = false
+        personaTextView.minSize = NSSize(width: 0, height: personaScrollView.contentSize.height)
+        personaTextView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        personaTextView.textContainer?.widthTracksTextView = true
+        personaTextView.textContainer?.containerSize = NSSize(
+            width: personaScrollView.contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        personaTextView.isRichText = false
+        personaTextView.isAutomaticQuoteSubstitutionEnabled = false
+        personaTextView.isAutomaticDashSubstitutionEnabled = false
+        personaTextView.font = .systemFont(ofSize: 13)
+        personaTextView.textContainerInset = NSSize(width: 6, height: 6)
+        personaTextView.delegate = self
+        personaScrollView.documentView = personaTextView
+        content.addSubview(personaScrollView)
+
+        characterCountLabel.font = .systemFont(ofSize: 11)
+        characterCountLabel.alignment = .right
+        characterCountLabel.frame = CGRect(x: 470, y: 431, width: 182, height: 20)
+        content.addSubview(characterCountLabel)
+
+        let resetPersona = NSButton(title: "恢复默认人设", target: self, action: #selector(resetPersona))
+        resetPersona.bezelStyle = .rounded
+        resetPersona.frame = CGRect(x: 28, y: 426, width: 112, height: 28)
+        content.addSubview(resetPersona)
+
+        let personaDivider = NSBox(frame: CGRect(x: 28, y: 416, width: 624, height: 1))
+        personaDivider.boxType = .separator
+        content.addSubview(personaDivider)
 
         statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
         statusLabel.textColor = .secondaryLabelColor
-        statusLabel.frame = CGRect(x: 28, y: 413, width: 620, height: 20)
+        statusLabel.frame = CGRect(x: 28, y: 392, width: 620, height: 20)
         content.addSubview(statusLabel)
 
-        var y: CGFloat = 352
+        var y: CGFloat = 316
         for plugin in AgentPluginID.allCases {
             let checkbox = NSButton(checkboxWithTitle: plugin.title, target: self, action: #selector(selectionChanged))
             checkbox.font = .systemFont(ofSize: 15, weight: .semibold)
@@ -91,10 +145,11 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
             content.addSubview(checkbox)
             checkboxes[plugin] = checkbox
 
-            let detail = NSTextField(wrappingLabelWithString: plugin.detail)
+            let detail = NSTextField(labelWithString: plugin.detail)
             detail.font = .systemFont(ofSize: 12)
             detail.textColor = .secondaryLabelColor
-            detail.frame = CGRect(x: 52, y: y - 2, width: 480, height: 42)
+            detail.lineBreakMode = .byTruncatingTail
+            detail.frame = CGRect(x: 52, y: y - 2, width: 480, height: 20)
             content.addSubview(detail)
 
             let runtime = NSTextField(labelWithString: "")
@@ -126,11 +181,12 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
         cancel.frame = CGRect(x: 478, y: 38, width: 76, height: 30)
         content.addSubview(cancel)
 
-        let save = NSButton(title: "保存并重启", target: self, action: #selector(save))
-        save.bezelStyle = .rounded
-        save.keyEquivalent = "\r"
-        save.frame = CGRect(x: 560, y: 38, width: 92, height: 30)
-        content.addSubview(save)
+        saveButton.target = self
+        saveButton.action = #selector(save)
+        saveButton.bezelStyle = .rounded
+        saveButton.keyEquivalent = "\r"
+        saveButton.frame = CGRect(x: 560, y: 38, width: 92, height: 30)
+        content.addSubview(saveButton)
     }
 
     @objc private func selectionChanged() {
@@ -149,13 +205,44 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
         window.orderOut(nil)
     }
 
+    @objc private func resetPersona() {
+        personaTextView.string = AgentPersona.defaultText
+        refreshPersonaValidation()
+    }
+
     @objc private func save() {
+        guard let persona = try? AgentPersona.validated(personaTextView.string) else {
+            NSSound.beep()
+            refreshPersonaValidation()
+            return
+        }
         var configuration = AgentPluginConfiguration(enabled: [])
         for plugin in AgentPluginID.allCases {
             configuration.setEnabled(checkboxes[plugin]?.state == .on, for: plugin)
         }
-        onSave?(configuration)
+        onSave?(persona, configuration)
         window.orderOut(nil)
+    }
+
+    func textDidChange(_ notification: Notification) {
+        refreshPersonaValidation()
+    }
+
+    private func refreshPersonaValidation() {
+        let count = personaTextView.string.count
+        if (try? AgentPersona.validated(personaTextView.string)) != nil {
+            characterCountLabel.stringValue = "\(count) / \(AgentPersona.maximumCharacterCount)"
+            characterCountLabel.textColor = .secondaryLabelColor
+            saveButton.isEnabled = true
+        } else if personaTextView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            characterCountLabel.stringValue = "人设不能为空"
+            characterCountLabel.textColor = .systemRed
+            saveButton.isEnabled = false
+        } else {
+            characterCountLabel.stringValue = "已超出 \(count - AgentPersona.maximumCharacterCount) 个字符"
+            characterCountLabel.textColor = .systemRed
+            saveButton.isEnabled = false
+        }
     }
 
     private func refreshSkillSummary() {
