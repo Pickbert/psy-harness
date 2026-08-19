@@ -2,9 +2,25 @@ name: Windows Agent Release
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-release.yml"
+      - "Agent/**"
+      - "Sources/DesktopPet/Resources/**"
+      - "ThirdParty/deepseek-harness/**"
+      - "installer/**"
+      - "scripts/build-windows-package.ps1"
+      - "scripts/windows-agent-smoke.mjs"
+      - "windows/**"
   push:
+    branches:
+      - main
     tags:
       - "v*"
+
+concurrency:
+  group: windows-agent-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
   contents: write
@@ -109,7 +125,7 @@ jobs:
           & "build\windows-agent-package-v$env:APP_VERSION\DesktopPetAgent\node.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "Bundled Node runtime smoke test failed." }
 
-      - name: Smoke-test portable parser and installer
+      - name: Smoke-test plugin registry, portable parser, and installer
         shell: pwsh
         run: |
           $base = "DesktopPet-Windows-v$env:APP_VERSION-Agent-x64"
@@ -155,6 +171,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: DesktopPet-Windows-v${{ env.APP_VERSION }}-Agent-x64
+          retention-days: 14
           path: |
             build/DesktopPet-Windows-v${{ env.APP_VERSION }}-Agent-x64-Setup.exe
             build/DesktopPet-Windows-v${{ env.APP_VERSION }}-Agent-x64-Portable.zip
