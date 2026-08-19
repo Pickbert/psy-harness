@@ -55,8 +55,10 @@ constexpr UINT kTrayCallback = WM_APP + 1;
 constexpr UINT kDeepSeekResult = WM_APP + 2;
 constexpr UINT kAgentEvent = WM_APP + 3;
 constexpr UINT kFileAnalysisEvent = WM_APP + 4;
+constexpr UINT kFocusDeepSeekChatInput = WM_APP + 5;
 constexpr UINT_PTR kAnimationTimer = 1;
 constexpr UINT_PTR kAgentPluginStatusTimer = 2;
+constexpr int kDeepSeekHotKeyID = 1;
 
 constexpr UINT kMenuCall = 1001;
 constexpr UINT kMenuPause = 1002;
@@ -120,6 +122,18 @@ struct AgentPluginDialogData {
     unsigned int configuredFlags = desktop_pet::kDefaultAgentPluginFlags;
 };
 
+class ScopedFlag {
+public:
+    explicit ScopedFlag(bool& value) : value_(value) { value_ = true; }
+    ~ScopedFlag() { value_ = false; }
+
+    ScopedFlag(const ScopedFlag&) = delete;
+    ScopedFlag& operator=(const ScopedFlag&) = delete;
+
+private:
+    bool& value_;
+};
+
 enum class AgentStartupPurpose {
     None,
     Prompt,
@@ -153,9 +167,12 @@ HINSTANCE g_instance = nullptr;
 HWND g_window = nullptr;
 HWND g_speechBubbleWindow = nullptr;
 HWND g_speechTextControl = nullptr;
+HWND g_deepSeekChatDialog = nullptr;
 HMODULE g_richEditLibrary = nullptr;
 NOTIFYICONDATAW g_trayIcon{};
 ULONG_PTR g_gdiplusToken = 0;
+bool g_deepSeekHotKeyRegistered = false;
+bool g_deepSeekChatFlowActive = false;
 std::vector<IStream*> g_imageStreams;
 std::unique_ptr<Bitmap> g_dogImage;
 std::unique_ptr<Bitmap> g_blinkImage;
@@ -1537,9 +1554,24 @@ bool ShowAgentPluginSettings(unsigned int& configuredFlags) {
     return true;
 }
 
+void ActivateDeepSeekChatDialog(HWND dialog) {
+    if (!dialog || !IsWindow(dialog)) return;
+    if (IsIconic(dialog)) {
+        ShowWindow(dialog, SW_RESTORE);
+    } else {
+        ShowWindow(dialog, SW_SHOW);
+    }
+    BringWindowToTop(dialog);
+    SetForegroundWindow(dialog);
+    SetActiveWindow(dialog);
+    HWND input = GetDlgItem(dialog, IDC_CHAT_INPUT);
+    if (input) SetFocus(input);
+}
+
 INT_PTR CALLBACK DeepSeekChatDialogProcedure(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam) {
     if (message == WM_INITDIALOG) {
         SetWindowLongPtrW(dialog, DWLP_USER, lParam);
+        g_deepSeekChatDialog = dialog;
         auto* data = reinterpret_cast<ChatDialogData*>(lParam);
         const bool hasAttachments = data && !data->attachments.empty();
         if (hasAttachments) {
@@ -1564,7 +1596,12 @@ INT_PTR CALLBACK DeepSeekChatDialogProcedure(HWND dialog, UINT message, WPARAM w
                 : L"想问哈妮丝什么？")
         );
         SetFocus(GetDlgItem(dialog, IDC_CHAT_INPUT));
+        PostMessageW(dialog, kFocusDeepSeekChatInput, 0, 0);
         return FALSE;
+    }
+    if (message == kFocusDeepSeekChatInput) {
+        ActivateDeepSeekChatDialog(dialog);
+        return TRUE;
     }
     if (message == WM_COMMAND) {
         if (LOWORD(wParam) == IDOK) {
@@ -1584,6 +1621,9 @@ INT_PTR CALLBACK DeepSeekChatDialogProcedure(HWND dialog, UINT message, WPARAM w
             EndDialog(dialog, IDCANCEL);
             return TRUE;
         }
+    }
+    if (message == WM_NCDESTROY && g_deepSeekChatDialog == dialog) {
+        g_deepSeekChatDialog = nullptr;
     }
     return FALSE;
 }
@@ -2347,10 +2387,16 @@ private:
 };
 
 void StartDeepSeekChat() {
+    if (g_deepSeekChatDialog && IsWindow(g_deepSeekChatDialog)) {
+        ActivateDeepSeekChatDialog(g_deepSeekChatDialog);
+        return;
+    }
+    if (g_deepSeekChatFlowActive) return;
     if (g_requestInFlight || g_fileAnalysisPreparing) {
         ShowSpeechBubble(L"我还在想上一条问题，请稍等一下～", 5);
         return;
     }
+    ScopedFlag chatFlow(g_deepSeekChatFlowActive);
 
     std::wstring apiKey = ReadDeepSeekApiKey();
     if (apiKey.empty()) {
@@ -3033,7 +3079,11 @@ void HandleMenuCommand(UINT command) {
 void ShowTrayMenu() {
     HMENU menu = CreatePopupMenu();
     const bool hasAgent = desktop_pet::AgentRuntime::IsPackaged(AgentRuntimeDirectory());
-    AppendMenuW(menu, MF_STRING, kMenuDeepSeekChat, hasAgent ? L"开始 Agent 对话..." : L"开始 AI 对话...");
+    std::wstring chatMenuTitle = hasAgent ? L"开始 Agent 对话..." : L"开始 AI 对话...";
+    chatMenuTitle += g_deepSeekHotKeyRegistered
+        ? L"\tCtrl+Alt+0"
+        : L"（Ctrl+Alt+0 已被占用）";
+    AppendMenuW(menu, MF_STRING, kMenuDeepSeekChat, chatMenuTitle.c_str());
     AppendMenuW(menu, MF_STRING, kMenuDeepSeekSettings, L"设置 DeepSeek API...");
     if (hasAgent) {
         const bool agentBusy = g_requestInFlight || g_fileAnalysisPreparing;
@@ -3175,6 +3225,22 @@ void AddTrayIcon() {
 
 LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
+        case WM_HOTKEY:
+            if (static_cast<int>(wParam) == kDeepSeekHotKeyID) {
+                RecordUserInteraction();
+                if (!g_visible) {
+                    g_visible = true;
+                    ShowWindow(window, SW_SHOWNOACTIVATE);
+                    RenderPet();
+                }
+                if (g_deepSeekChatDialog && IsWindow(g_deepSeekChatDialog)) {
+                    ActivateDeepSeekChatDialog(g_deepSeekChatDialog);
+                } else {
+                    StartDeepSeekChat();
+                }
+                return 0;
+            }
+            break;
         case WM_TIMER:
             if (wParam == kAnimationTimer) {
                 TickAnimation();
@@ -3424,6 +3490,10 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         case WM_DESTROY:
             KillTimer(window, kAnimationTimer);
             KillTimer(window, kAgentPluginStatusTimer);
+            if (g_deepSeekHotKeyRegistered) {
+                UnregisterHotKey(window, kDeepSeekHotKeyID);
+                g_deepSeekHotKeyRegistered = false;
+            }
             if (g_agentRuntime) g_agentRuntime->Shutdown();
             if (g_fileAnalysisRuntime) g_fileAnalysisRuntime->Shutdown();
             if (g_fileDropTarget) {
@@ -3540,6 +3610,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         nullptr
     );
 
+    g_deepSeekHotKeyRegistered = RegisterHotKey(
+        g_window,
+        kDeepSeekHotKeyID,
+        MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
+        static_cast<UINT>(L'0')
+    ) != FALSE;
     AddTrayIcon();
     RestoreActiveFileAnalysisSession();
     ResetPosition();
