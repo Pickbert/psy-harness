@@ -3,7 +3,8 @@ param(
     [switch]$SkipHarnessBuild,
     [switch]$CreateInstaller,
     [switch]$CreatePortableZip,
-    [string]$SigningCertificateThumbprint = ""
+    [string]$SigningCertificateThumbprint = "",
+    [string]$ChineseLanguageFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +19,8 @@ $AppVersion = (Get-Content -LiteralPath $VersionFile -Raw).Trim()
 if ($AppVersion -notmatch '^\d+\.\d+\.\d+$') {
     throw "Invalid Windows version: $AppVersion"
 }
+$ChineseLanguageUri = "https://raw.githubusercontent.com/jrsoftware/issrc/4adf37ed7f3fd2bd11c6836ba056e3de170fbabf/Files/Languages/Unofficial/ChineseSimplified.isl"
+$ExpectedChineseLanguageHash = "7d544b9bb1d142cfa11f2e5d3cc8abe2e55f8e066c5124e3772675aa236e1278"
 $VersionParts = $AppVersion.Split('.') | ForEach-Object { [int]$_ }
 function Assert-BinaryVersion {
     param(
@@ -222,10 +225,26 @@ try {
         if ([string]::IsNullOrWhiteSpace($Iscc)) {
             throw "Inno Setup 6 compiler (ISCC.exe) is required for -CreateInstaller."
         }
+        if ([string]::IsNullOrWhiteSpace($ChineseLanguageFile)) {
+            $ChineseLanguageFile = Join-Path (Split-Path -Parent $Iscc) "Languages\ChineseSimplified.isl"
+            if (-not (Test-Path -LiteralPath $ChineseLanguageFile -PathType Leaf)) {
+                $ChineseLanguageFile = Join-Path ([System.IO.Path]::GetTempPath()) "DesktopPet-ChineseSimplified-6.7.3.isl"
+                Invoke-WebRequest -Uri $ChineseLanguageUri -OutFile $ChineseLanguageFile
+            }
+        }
+        $ChineseLanguageFile = [System.IO.Path]::GetFullPath($ChineseLanguageFile)
+        if (-not (Test-Path -LiteralPath $ChineseLanguageFile -PathType Leaf)) {
+            throw "ChineseSimplified.isl was not found. Pass its path with -ChineseLanguageFile."
+        }
+        $ChineseLanguageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ChineseLanguageFile).Hash.ToLowerInvariant()
+        if ($ChineseLanguageHash -ne $ExpectedChineseLanguageHash) {
+            throw "ChineseSimplified.isl SHA-256 mismatch: expected $ExpectedChineseLanguageHash, got $ChineseLanguageHash."
+        }
         $InnoArguments = [System.Collections.Generic.List[string]]::new()
         $InnoArguments.Add("/DAppVersion=$AppVersion")
         $InnoArguments.Add("/DSourceDir=$OutputDirectory")
         $InnoArguments.Add("/DProjectDir=$ProjectDirectory")
+        $InnoArguments.Add("/DChineseLanguageFile=$ChineseLanguageFile")
         $InnoArguments.Add("/O$ReleaseDirectory")
         $InnoArguments.Add("/F$ReleaseBaseName-Setup")
         if (-not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)) {

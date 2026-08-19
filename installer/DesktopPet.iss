@@ -7,6 +7,9 @@
 #ifndef ProjectDir
   #error ProjectDir must be supplied by build-windows-package.ps1
 #endif
+#ifndef ChineseLanguageFile
+  #error ChineseLanguageFile must be supplied by build-windows-package.ps1
+#endif
 
 [Setup]
 AppId={{A0AB43B2-4D95-4D29-9C2C-27B35B496EC9}
@@ -39,7 +42,7 @@ SignedUninstaller=yes
 #endif
 
 [Languages]
-Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "chinesesimp"; MessagesFile: "{#ChineseLanguageFile}"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："; Flags: unchecked

@@ -174,7 +174,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-package.ps1 `
   -CreateInstaller -CreatePortableZip
 ```
 
-脚本会生成包含 `DesktopPet-Windows-x64.exe` 和 `DesktopPetAgent/` 的完整目录、安装包、便携 ZIP 与 SHA-256 清单，并校验 ConPTY、Koffi、ExcelJS、Mammoth 和 PDF.js 是否齐全。为避免旧依赖混入新发布包，输出目录已存在时脚本会直接报错；可通过 `-OutputDirectory` 指定一个新目录。
+脚本会生成包含 `DesktopPet-Windows-x64.exe` 和 `DesktopPetAgent/` 的完整目录、安装包、便携 ZIP 与 SHA-256 清单，并校验 ConPTY、Koffi、ExcelJS、Mammoth 和 PDF.js 是否齐全。Inno Setup 标准安装不包含简体中文翻译，脚本会从固定的 6.7.3 官方源码提交下载并校验该语言文件；也可通过 `-ChineseLanguageFile` 传入已经下载且哈希一致的文件。为避免旧依赖混入新发布包，输出目录已存在时脚本会直接报错；可通过 `-OutputDirectory` 指定一个新目录。
 
 仓库的 `Windows Agent Release` GitHub Actions 工作流会在固定的 `windows-2022` runner 上执行同样的构建。手动运行工作流可下载测试制品；推送与 `windows/VERSION` 一致的 `v0.7.0` 标签会自动创建 GitHub Release。当前无签名证书时生成未签名包；以后配置 `WINDOWS_CERTIFICATE_BASE64` 与 `WINDOWS_CERTIFICATE_PASSWORD` Secrets 后，流水线会自动签名主程序、安装器和卸载程序。
 
