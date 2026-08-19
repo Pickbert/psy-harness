@@ -91,7 +91,7 @@ New-Item -ItemType Directory -Path $RuntimeDirectory, $IntermediateDirectory | O
 
 Push-Location $ProjectDirectory
 try {
-    & $ResourceCompiler.Source /nologo /I windows /fo $ResourcePath windows\resources.rc
+    & $ResourceCompiler.Source /nologo /c 65001 /I windows /fo $ResourcePath windows\resources.rc
     if ($LASTEXITCODE -ne 0) { throw "Windows resource compilation failed with exit code $LASTEXITCODE." }
 
     & $Compiler.Source /nologo /std:c++20 /O2 /EHsc /MT /utf-8 /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0A00 `
@@ -186,6 +186,7 @@ try {
         "file-analysis\node_modules\mammoth\package.json",
         "file-analysis\node_modules\pdfjs-dist\package.json",
         "node\node_modules\@deepseek-ai\dsh-sdk-jsonrpc-demo\lib\packaged-bin.js",
+        "node\node_modules\@deepseek-ai\dsh-sandbox-windows-acl\lib\runner.js",
         "node\node_modules\node-pty\prebuilds\win32-x64\conpty.node",
         "node\node_modules\node-pty\prebuilds\win32-x64\conpty\conpty.dll",
         "node\node_modules\node-pty\prebuilds\win32-x64\conpty\OpenConsole.exe",
@@ -196,6 +197,14 @@ try {
         if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) {
             throw "Packaged Agent runtime is incomplete; missing $RelativePath."
         }
+    }
+
+    $AgentSmokeWorkspace = Join-Path $IntermediateDirectory "agent-smoke-workspace"
+    New-Item -ItemType Directory -Path $AgentSmokeWorkspace | Out-Null
+    & $NodeCommand.Source (Join-Path $ProjectDirectory "scripts\windows-agent-smoke.mjs") `
+        $RuntimeDirectory $AgentSmokeWorkspace
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged Agent prompt smoke test failed with exit code $LASTEXITCODE."
     }
 
     if (-not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)) {

@@ -6,6 +6,7 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -38,6 +39,28 @@ std::wstring WideFromUtf8(const std::string& value) {
     std::wstring result(static_cast<size_t>(size), L'\0');
     MultiByteToWideChar(
         CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), result.data(), size
+    );
+    return result;
+}
+
+std::wstring WideFromProcessText(const std::string& value) {
+    if (value.empty()) return {};
+    int size = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0
+    );
+    UINT codePage = CP_UTF8;
+    DWORD flags = MB_ERR_INVALID_CHARS;
+    if (size <= 0) {
+        codePage = CP_ACP;
+        flags = 0;
+        size = MultiByteToWideChar(
+            codePage, flags, value.data(), static_cast<int>(value.size()), nullptr, 0
+        );
+    }
+    if (size <= 0) return L"Agent 未返回可读的错误信息。";
+    std::wstring result(static_cast<size_t>(size), L'\0');
+    MultiByteToWideChar(
+        codePage, flags, value.data(), static_cast<int>(value.size()), result.data(), size
     );
     return result;
 }
@@ -267,6 +290,47 @@ void ReplaceAll(std::string& value, const std::string& needle, const std::string
     }
 }
 
+std::string TrimDiagnosticLine(std::string value) {
+    size_t first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    size_t last = value.find_last_not_of(" \t\r\n");
+    value = value.substr(first, last - first + 1);
+    static constexpr size_t kMaximumDiagnosticLength = 1200;
+    if (value.size() > kMaximumDiagnosticLength) {
+        value.resize(kMaximumDiagnosticLength);
+        value += "...";
+    }
+    return value;
+}
+
+std::string SummarizeDiagnostic(const std::string& diagnostic) {
+    std::string fallback;
+    std::string errorLine;
+    size_t start = 0;
+    while (start < diagnostic.size()) {
+        size_t end = diagnostic.find('\n', start);
+        std::string line = TrimDiagnosticLine(diagnostic.substr(
+            start, end == std::string::npos ? std::string::npos : end - start
+        ));
+        if (!line.empty()) {
+            if (fallback.empty()) fallback = line;
+            std::string lower = line;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char character) {
+                return static_cast<char>(std::tolower(character));
+            });
+            if (lower.find("error") != std::string::npos ||
+                lower.find("failed") != std::string::npos ||
+                lower.find("cannot find") != std::string::npos ||
+                lower.find("not found") != std::string::npos) {
+                errorLine = line;
+            }
+        }
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return errorLine.empty() ? fallback : errorLine;
+}
+
 }  // namespace
 
 AgentRuntime::AgentRuntime(EventHandler handler) : handler_(std::move(handler)) {}
@@ -304,9 +368,15 @@ bool AgentRuntime::Start(
     configuration_ = configuration;
     shuttingDown_.store(false);
     ready_.store(false);
+    failureReported_.store(false);
+    readersRemaining_.store(0);
     nextRequestId_ = 1;
     streamedText_.clear();
     finalText_.clear();
+    {
+        std::lock_guard<std::mutex> lock(stderrMutex_);
+        stderrTail_.clear();
+    }
 
     const std::filesystem::path runtimeRoot(configuration.runtimeDirectory);
     const std::filesystem::path nodePath = runtimeRoot / L"node.exe";
@@ -461,6 +531,7 @@ bool AgentRuntime::Start(
     }
     process_ = processInfo.hProcess;
     running_.store(true);
+    readersRemaining_.store(2);
     ResumeThread(processInfo.hThread);
     CloseHandle(processInfo.hThread);
 
@@ -470,7 +541,9 @@ bool AgentRuntime::Start(
         HANDLE handles[] = {process_, startupStopEvent_};
         DWORD wait = WaitForMultipleObjects(2, handles, FALSE, 20000);
         if (wait == WAIT_TIMEOUT && !ready_.load() && !shuttingDown_.load()) {
-            Emit({AgentEventType::Error, L"Windows Agent 启动超时（20 秒）。"});
+            if (!failureReported_.exchange(true)) {
+                Emit({AgentEventType::Error, L"Windows Agent 启动超时（20 秒）。"});
+            }
             if (job_) TerminateJobObject(job_, 1);
         }
     });
@@ -583,9 +656,7 @@ void AgentRuntime::ReadStdout() {
     }
     running_.store(false);
     ready_.store(false);
-    if (!shuttingDown_.load()) {
-        Emit({AgentEventType::Exited, L"Windows Agent 意外退出。"});
-    }
+    FinishReader();
 }
 
 void AgentRuntime::ReadStderr() {
@@ -595,12 +666,34 @@ void AgentRuntime::ReadStderr() {
     while (stderrRead_ && ReadFile(
             stderrRead_, chunk.data(), static_cast<DWORD>(chunk.size()), &bytesRead, nullptr
         ) && bytesRead > 0) {
-        std::string text(chunk.data(), bytesRead);
-        ReplaceAll(text, apiKey, "[REDACTED]");
-        text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
-        while (!text.empty() && (text.back() == '\n' || text.back() == ' ')) text.pop_back();
-        if (!text.empty()) Emit({AgentEventType::Activity, L"Agent：" + WideFromUtf8(text)});
+        std::lock_guard<std::mutex> lock(stderrMutex_);
+        stderrTail_.append(chunk.data(), bytesRead);
+        ReplaceAll(stderrTail_, apiKey, "[REDACTED]");
+        static constexpr size_t kMaximumStderrBytes = 64 * 1024;
+        if (stderrTail_.size() > kMaximumStderrBytes) {
+            stderrTail_.erase(0, stderrTail_.size() - kMaximumStderrBytes);
+        }
     }
+    FinishReader();
+}
+
+void AgentRuntime::FinishReader() {
+    if (readersRemaining_.fetch_sub(1) != 1) return;
+    running_.store(false);
+    ready_.store(false);
+    if (shuttingDown_.load() || failureReported_.exchange(true)) return;
+
+    DWORD exitCode = 0;
+    if (!process_ || !GetExitCodeProcess(process_, &exitCode)) exitCode = GetLastError();
+    std::string diagnostic;
+    {
+        std::lock_guard<std::mutex> lock(stderrMutex_);
+        diagnostic = SummarizeDiagnostic(stderrTail_);
+    }
+    std::wstring message = L"Windows Agent 意外退出（退出码 " +
+        std::to_wstring(static_cast<unsigned long long>(exitCode)) + L"）";
+    if (!diagnostic.empty()) message += L"：" + WideFromProcessText(diagnostic);
+    Emit({AgentEventType::Exited, std::move(message)});
 }
 
 void AgentRuntime::HandleFrame(const std::string& frame) {
@@ -625,7 +718,9 @@ void AgentRuntime::HandleFrame(const std::string& frame) {
             std::string errorMessage;
             if (ExtractJsonString(frame, "message", errorMessage, FindKey(frame, "error"))) {
                 if (startupStopEvent_) SetEvent(startupStopEvent_);
-                Emit({AgentEventType::Error, L"Agent 初始化失败：" + WideFromUtf8(errorMessage)});
+                if (!failureReported_.exchange(true)) {
+                    Emit({AgentEventType::Error, L"Agent 初始化失败：" + WideFromUtf8(errorMessage)});
+                }
                 if (job_) TerminateJobObject(job_, 1);
                 return;
             }

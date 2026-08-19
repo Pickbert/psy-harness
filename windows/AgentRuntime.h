@@ -69,6 +69,7 @@ public:
 private:
     void ReadStdout();
     void ReadStderr();
+    void FinishReader();
     void HandleFrame(const std::string& frame);
     void HandleNotification(const std::string& method, const std::string& frame);
     bool WriteFrame(const std::string& frame);
@@ -88,14 +89,18 @@ private:
     std::thread startupThread_;
     std::mutex writeMutex_;
     std::mutex stateMutex_;
+    std::mutex stderrMutex_;
     std::atomic<bool> running_{false};
     std::atomic<bool> ready_{false};
     std::atomic<bool> shuttingDown_{false};
+    std::atomic<bool> failureReported_{false};
+    std::atomic<int> readersRemaining_{0};
     unsigned long long initializeRequestId_ = 0;
     unsigned long long nextRequestId_ = 1;
     std::wstring activeSessionId_;
     std::string streamedText_;
     std::string finalText_;
+    std::string stderrTail_;
 };
 
 }  // namespace desktop_pet

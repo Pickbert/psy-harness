@@ -76,12 +76,12 @@ build/windows/DesktopPet-Windows-x64.exe
 
 Windows 本地 Agent 版需要将 `DesktopPet-Windows-x64.exe` 和同级的 `DesktopPetAgent/` 目录一起分发；运行时已包含 Node，用户电脑不需要另行安装 Node、pnpm、Python、Swift 或 .NET。首次 Agent 对话会选择长期工作目录；菜单可切换目录或开始新会话。
 
-正式的 Windows `0.7.0` 发布同时提供安装包和便携 ZIP。普通用户下载 `DesktopPet-Windows-v0.7.0-Agent-x64-Setup.exe` 后直接安装即可；便携版解压 `DesktopPet-Windows-v0.7.0-Agent-x64-Portable.zip` 后运行其中的 EXE。两者都已经包含完整 Agent 和文件解析运行时，不需要在目标电脑重新编译。
+正式的 Windows `0.7.1` 发布同时提供安装包和便携 ZIP。普通用户下载 `DesktopPet-Windows-v0.7.1-Agent-x64-Setup.exe` 后直接安装即可；便携版解压 `DesktopPet-Windows-v0.7.1-Agent-x64-Portable.zip` 后运行其中的 EXE。两者都已经包含完整 Agent 和文件解析运行时，不需要在目标电脑重新编译。
 
-首版安装包尚未使用 Authenticode 代码签名，Windows SmartScreen 可能显示“未知发布者”。可用发布页中的 `DesktopPet-Windows-v0.7.0-Agent-x64-SHA256SUMS.txt` 校验文件完整性：
+首版安装包尚未使用 Authenticode 代码签名，Windows SmartScreen 可能显示“未知发布者”。可用发布页中的 `DesktopPet-Windows-v0.7.1-Agent-x64-SHA256SUMS.txt` 校验文件完整性：
 
 ```powershell
-Get-FileHash .\DesktopPet-Windows-v0.7.0-Agent-x64-Setup.exe -Algorithm SHA256
+Get-FileHash .\DesktopPet-Windows-v0.7.1-Agent-x64-Setup.exe -Algorithm SHA256
 ```
 
 ## DeepSeek AI 对话
@@ -174,9 +174,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-package.ps1 `
   -CreateInstaller -CreatePortableZip
 ```
 
-脚本会生成包含 `DesktopPet-Windows-x64.exe` 和 `DesktopPetAgent/` 的完整目录、安装包、便携 ZIP 与 SHA-256 清单，并校验 ConPTY、Koffi、ExcelJS、Mammoth 和 PDF.js 是否齐全。Inno Setup 标准安装不包含简体中文翻译，脚本会从固定的 6.7.3 官方源码提交下载并校验该语言文件；也可通过 `-ChineseLanguageFile` 传入已经下载且哈希一致的文件。为避免旧依赖混入新发布包，输出目录已存在时脚本会直接报错；可通过 `-OutputDirectory` 指定一个新目录。
+脚本会生成包含 `DesktopPet-Windows-x64.exe` 和 `DesktopPetAgent/` 的完整目录、安装包、便携 ZIP 与 SHA-256 清单，并校验 ConPTY、Koffi、ExcelJS、Mammoth 和 PDF.js 是否齐全。随后它会用仅存在于构建进程内的假 Key 和本机回环模拟服务，完成一次打包后 Agent 的初始化与对话自检；自检不需要真实 API Key，也不会访问 DeepSeek。Inno Setup 标准安装不包含简体中文翻译，脚本会从固定的 6.7.3 官方源码提交下载并校验该语言文件；也可通过 `-ChineseLanguageFile` 传入已经下载且哈希一致的文件。为避免旧依赖混入新发布包，输出目录已存在时脚本会直接报错；可通过 `-OutputDirectory` 指定一个新目录。
 
-仓库的 `Windows Agent Release` GitHub Actions 工作流会在固定的 `windows-2022` runner 上执行同样的构建。手动运行工作流可下载测试制品；推送与 `windows/VERSION` 一致的 `v0.7.0` 标签会自动创建 GitHub Release。当前无签名证书时生成未签名包；以后配置 `WINDOWS_CERTIFICATE_BASE64` 与 `WINDOWS_CERTIFICATE_PASSWORD` Secrets 后，流水线会自动签名主程序、安装器和卸载程序。
+仓库的 `Windows Agent Release` GitHub Actions 工作流会在固定的 `windows-2022` runner 上执行同样的构建。手动运行工作流可下载测试制品；推送与 `windows/VERSION` 一致的 `v0.7.1` 标签会自动创建 GitHub Release。当前无签名证书时生成未签名包；以后配置 `WINDOWS_CERTIFICATE_BASE64` 与 `WINDOWS_CERTIFICATE_PASSWORD` Secrets 后，流水线会自动签名主程序、安装器和卸载程序。
 
 核心文件：
 
