@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace desktop_pet {
 
@@ -17,8 +18,25 @@ enum class AgentEventType {
     Activity,
     Answer,
     Approval,
+    PluginStatus,
     Error,
     Exited
+};
+
+enum AgentPluginFlag : unsigned int {
+    AgentPluginSkills = 1u << 0,
+    AgentPluginTodo = 1u << 1,
+    AgentPluginGoals = 1u << 2,
+    AgentPluginWebSearch = 1u << 3
+};
+
+inline constexpr unsigned int kDefaultAgentPluginFlags = AgentPluginSkills | AgentPluginTodo;
+inline constexpr unsigned int kAllAgentPluginFlags =
+    AgentPluginSkills | AgentPluginTodo | AgentPluginGoals | AgentPluginWebSearch;
+
+struct AgentPluginSnapshot {
+    std::vector<std::wstring> toolNames;
+    std::vector<std::wstring> skillNames;
 };
 
 struct AgentEvent {
@@ -29,6 +47,8 @@ struct AgentEvent {
     std::wstring summary;
     std::wstring risk;
     std::wstring reason;
+    bool pluginStatusSucceeded = false;
+    AgentPluginSnapshot pluginSnapshot;
 
     AgentEvent() = default;
     AgentEvent(AgentEventType eventType, std::wstring message)
@@ -41,6 +61,7 @@ struct AgentLaunchConfiguration {
     std::wstring apiKey;
     std::wstring model;
     int maxOutputTokens = 8192;
+    unsigned int enabledPluginFlags = kDefaultAgentPluginFlags;
 };
 
 // Owns the bundled Harness process and its newline-delimited JSON-RPC channel.
@@ -60,6 +81,7 @@ public:
 
     bool Start(const AgentLaunchConfiguration& configuration, std::wstring& error);
     bool SendPrompt(const std::wstring& prompt, const std::wstring& sessionId, std::wstring& error);
+    bool RequestPluginSnapshot(std::wstring& error);
     void RespondToApproval(const std::wstring& rpcId, const wchar_t* outcome);
     void Shutdown();
 
@@ -96,7 +118,8 @@ private:
     std::atomic<bool> failureReported_{false};
     std::atomic<int> readersRemaining_{0};
     unsigned long long initializeRequestId_ = 0;
-    unsigned long long nextRequestId_ = 1;
+    std::atomic<unsigned long long> nextRequestId_{1};
+    std::atomic<unsigned long long> pluginSnapshotRequestId_{0};
     std::wstring activeSessionId_;
     std::string streamedText_;
     std::string finalText_;

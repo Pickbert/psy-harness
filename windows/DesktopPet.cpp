@@ -56,6 +56,7 @@ constexpr UINT kDeepSeekResult = WM_APP + 2;
 constexpr UINT kAgentEvent = WM_APP + 3;
 constexpr UINT kFileAnalysisEvent = WM_APP + 4;
 constexpr UINT_PTR kAnimationTimer = 1;
+constexpr UINT_PTR kAgentPluginStatusTimer = 2;
 
 constexpr UINT kMenuCall = 1001;
 constexpr UINT kMenuPause = 1002;
@@ -72,6 +73,11 @@ constexpr UINT kMenuSizeLarge = 1012;
 constexpr UINT kMenuFileAnalysisCancel = 1013;
 constexpr UINT kMenuFileAnalysisEnd = 1014;
 constexpr UINT kMenuFileAnalysisClearCache = 1015;
+constexpr UINT kMenuAgentClearWorkspace = 1016;
+constexpr UINT kMenuAgentStopTask = 1017;
+constexpr UINT kMenuAgentPlugins = 1018;
+constexpr UINT kMenuAgentRestart = 1019;
+constexpr UINT kMenuAgentStatus = 1020;
 constexpr UINT kMenuExit = 1099;
 
 enum class Mood {
@@ -108,6 +114,17 @@ struct DeepSeekAsyncResult {
 struct ChatDialogData {
     std::wstring question;
     std::wstring attachments;
+};
+
+struct AgentPluginDialogData {
+    unsigned int configuredFlags = desktop_pet::kDefaultAgentPluginFlags;
+};
+
+enum class AgentStartupPurpose {
+    None,
+    Prompt,
+    PluginApply,
+    ManualRestart
 };
 
 enum MarkdownStyle : unsigned int {
@@ -188,6 +205,12 @@ double g_speechBubbleRemaining = 0;
 bool g_requestInFlight = false;
 bool g_agentAllowsAllSafeOperations = false;
 std::unique_ptr<desktop_pet::AgentRuntime> g_agentRuntime;
+desktop_pet::AgentPluginSnapshot g_agentPluginSnapshot;
+bool g_hasAgentPluginSnapshot = false;
+bool g_agentPluginStatusPending = false;
+std::wstring g_agentPluginStatusError;
+HWND g_agentPluginDialog = nullptr;
+AgentStartupPurpose g_agentStartupPurpose = AgentStartupPurpose::None;
 std::unique_ptr<desktop_pet::FileAnalysisRuntime> g_fileAnalysisRuntime;
 IDropTarget* g_fileDropTarget = nullptr;
 std::wstring g_pendingAgentQuestion;
@@ -212,6 +235,8 @@ void StartDeepSeekChat();
 void ShowSpeechBubble(const std::wstring& text, double durationSeconds);
 void HandleDroppedFiles(const std::vector<std::wstring>& paths);
 void RenderPet();
+void RefreshAgentPluginDialog();
+void RequestAgentPluginStatus();
 
 double RandomDouble(double minimum, double maximum) {
     std::uniform_real_distribution<double> distribution(minimum, maximum);
@@ -525,6 +550,120 @@ void WriteDesktopPetRegistryString(const wchar_t* name, const std::wstring& valu
 
 void DeleteDesktopPetRegistryValue(const wchar_t* name) {
     RegDeleteKeyValueW(HKEY_CURRENT_USER, L"Software\\DesktopPet", name);
+}
+
+unsigned int ReadAgentPluginFlags() {
+    DWORD value = desktop_pet::kDefaultAgentPluginFlags;
+    DWORD size = sizeof(value);
+    if (RegGetValueW(
+            HKEY_CURRENT_USER,
+            L"Software\\DesktopPet",
+            L"AgentEnabledPlugins",
+            RRF_RT_REG_DWORD,
+            nullptr,
+            &value,
+            &size
+        ) != ERROR_SUCCESS) {
+        return desktop_pet::kDefaultAgentPluginFlags;
+    }
+    return value & desktop_pet::kAllAgentPluginFlags;
+}
+
+bool SaveAgentPluginFlags(unsigned int flags) {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            L"Software\\DesktopPet",
+            0,
+            nullptr,
+            0,
+            KEY_SET_VALUE,
+            nullptr,
+            &key,
+            nullptr
+        ) != ERROR_SUCCESS) {
+        return false;
+    }
+    DWORD value = flags & desktop_pet::kAllAgentPluginFlags;
+    LONG result = RegSetValueExW(
+        key,
+        L"AgentEnabledPlugins",
+        0,
+        REG_DWORD,
+        reinterpret_cast<const BYTE*>(&value),
+        sizeof(value)
+    );
+    RegCloseKey(key);
+    return result == ERROR_SUCCESS;
+}
+
+bool AgentSnapshotContainsTool(const wchar_t* name) {
+    return std::find(
+        g_agentPluginSnapshot.toolNames.begin(),
+        g_agentPluginSnapshot.toolNames.end(),
+        name
+    ) != g_agentPluginSnapshot.toolNames.end();
+}
+
+bool IsAgentPluginActive(unsigned int flag) {
+    if (!g_hasAgentPluginSnapshot) return false;
+    switch (flag) {
+        case desktop_pet::AgentPluginSkills:
+            return AgentSnapshotContainsTool(L"skill");
+        case desktop_pet::AgentPluginTodo:
+            return AgentSnapshotContainsTool(L"todo_write");
+        case desktop_pet::AgentPluginGoals:
+            return AgentSnapshotContainsTool(L"create_goal") &&
+                AgentSnapshotContainsTool(L"get_goal") &&
+                AgentSnapshotContainsTool(L"update_goal");
+        case desktop_pet::AgentPluginWebSearch:
+            return AgentSnapshotContainsTool(L"web_search");
+        default:
+            return false;
+    }
+}
+
+std::wstring AgentPluginSummary(unsigned int flags) {
+    struct Entry {
+        unsigned int flag;
+        const wchar_t* title;
+    };
+    static constexpr Entry entries[] = {
+        {desktop_pet::AgentPluginSkills, L"本地技能库"},
+        {desktop_pet::AgentPluginTodo, L"任务清单"},
+        {desktop_pet::AgentPluginGoals, L"长期目标"},
+        {desktop_pet::AgentPluginWebSearch, L"DeepSeek 网页搜索"}
+    };
+    std::wstring summary;
+    for (const Entry& entry : entries) {
+        if ((flags & entry.flag) == 0) continue;
+        if (!summary.empty()) summary += L"、";
+        summary += entry.title;
+    }
+    return summary.empty() ? L"未启用可选插件" : summary;
+}
+
+std::wstring ActiveAgentPluginSummary() {
+    if (!g_hasAgentPluginSnapshot) return L"未运行或状态不可用";
+    unsigned int active = 0;
+    for (unsigned int flag : {
+            desktop_pet::AgentPluginSkills,
+            desktop_pet::AgentPluginTodo,
+            desktop_pet::AgentPluginGoals,
+            desktop_pet::AgentPluginWebSearch
+        }) {
+        if (IsAgentPluginActive(flag)) active |= flag;
+    }
+    return AgentPluginSummary(active);
+}
+
+void ClearAgentPluginRuntimeState() {
+    KillTimer(g_window, kAgentPluginStatusTimer);
+    g_agentPluginSnapshot = {};
+    g_hasAgentPluginSnapshot = false;
+    g_agentPluginStatusPending = false;
+    g_agentPluginStatusError.clear();
+    RefreshAgentPluginDialog();
 }
 
 DWORD ReadFileAnalysisMaxFileSizeMB() {
@@ -1157,19 +1296,272 @@ bool ShowWaitingSettings() {
     ) == IDOK;
 }
 
+struct AgentPluginUiEntry {
+    unsigned int flag;
+    int checkboxId;
+    int statusId;
+};
+
+constexpr AgentPluginUiEntry kAgentPluginUiEntries[] = {
+    {desktop_pet::AgentPluginSkills, IDC_PLUGIN_SKILLS, IDC_PLUGIN_SKILLS_STATUS},
+    {desktop_pet::AgentPluginTodo, IDC_PLUGIN_TODO, IDC_PLUGIN_TODO_STATUS},
+    {desktop_pet::AgentPluginGoals, IDC_PLUGIN_GOALS, IDC_PLUGIN_GOALS_STATUS},
+    {desktop_pet::AgentPluginWebSearch, IDC_PLUGIN_WEB_SEARCH, IDC_PLUGIN_WEB_SEARCH_STATUS}
+};
+
+std::vector<std::wstring> InstalledAgentSkillNames() {
+    std::vector<std::wstring> names;
+    const std::wstring workspace = ReadAgentWorkspace();
+    if (workspace.empty()) return names;
+    const std::filesystem::path root = std::filesystem::path(workspace) / L".desktop-pet" / L"skills";
+    std::error_code error;
+    if (!std::filesystem::is_directory(root, error)) return names;
+    for (const auto& entry : std::filesystem::directory_iterator(root, error)) {
+        if (error) break;
+        if (entry.is_regular_file(error) && entry.path().extension() == L".md") {
+            names.push_back(entry.path().stem().wstring());
+        } else if (entry.is_directory(error) &&
+                   std::filesystem::is_regular_file(entry.path() / L"SKILL.md", error)) {
+            names.push_back(entry.path().filename().wstring());
+        }
+        error.clear();
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+std::wstring SkillSummaryText() {
+    if (g_hasAgentPluginSnapshot && IsAgentPluginActive(desktop_pet::AgentPluginSkills)) {
+        if (g_agentPluginSnapshot.skillNames.empty()) {
+            return L"Harness 技能插件已启用，当前目录中尚无有效技能。";
+        }
+        std::wstring summary = L"Harness 已加载 " +
+            std::to_wstring(g_agentPluginSnapshot.skillNames.size()) + L" 个技能：";
+        size_t count = std::min<size_t>(3, g_agentPluginSnapshot.skillNames.size());
+        for (size_t index = 0; index < count; ++index) {
+            if (index > 0) summary += L"、";
+            summary += g_agentPluginSnapshot.skillNames[index];
+        }
+        return summary;
+    }
+    if (ReadAgentWorkspace().empty()) return L"请先选择 Agent 工作目录，再管理本地技能。";
+    std::vector<std::wstring> names = InstalledAgentSkillNames();
+    if (names.empty()) return L"技能目录为空，可放入 <name>/SKILL.md。";
+    std::wstring summary = L"已发现 " + std::to_wstring(names.size()) + L" 个技能：";
+    size_t count = std::min<size_t>(3, names.size());
+    for (size_t index = 0; index < count; ++index) {
+        if (index > 0) summary += L"、";
+        summary += names[index];
+    }
+    return summary;
+}
+
+unsigned int PluginFlagsFromDialog(HWND dialog) {
+    unsigned int flags = 0;
+    for (const AgentPluginUiEntry& entry : kAgentPluginUiEntries) {
+        if (IsDlgButtonChecked(dialog, entry.checkboxId) == BST_CHECKED) flags |= entry.flag;
+    }
+    return flags;
+}
+
+void RefreshAgentPluginDialog() {
+    HWND dialog = g_agentPluginDialog;
+    if (!dialog) return;
+    const unsigned int selectedFlags = PluginFlagsFromDialog(dialog);
+    for (const AgentPluginUiEntry& entry : kAgentPluginUiEntries) {
+        const bool selected = (selectedFlags & entry.flag) != 0;
+        std::wstring status;
+        if (g_hasAgentPluginSnapshot) {
+            const bool active = IsAgentPluginActive(entry.flag);
+            status = active == selected ? (active ? L"Harness 已启用" : L"已关闭") : L"保存后重启";
+        } else if (g_agentPluginStatusPending) {
+            status = selected ? L"正在读取" : L"已关闭";
+        } else if (g_agentRuntime && g_agentRuntime->IsRunning()) {
+            status = selected ? L"待确认" : L"已关闭";
+        } else {
+            status = selected ? L"待启动" : L"已关闭";
+        }
+        SetDlgItemTextW(dialog, entry.statusId, status.c_str());
+    }
+
+    std::wstring runtimeStatus;
+    if (g_agentPluginStatusPending) {
+        runtimeStatus = L"正在从 DeepSeek Harness 读取实际工具注册状态…";
+    } else if (!g_agentPluginStatusError.empty()) {
+        runtimeStatus = g_agentPluginStatusError;
+    } else if (g_hasAgentPluginSnapshot) {
+        runtimeStatus = L"已从 DeepSeek Harness 读取实际工具注册状态。";
+    } else if (g_agentRuntime && g_agentRuntime->IsRunning()) {
+        runtimeStatus = L"Harness 正在启动或尚未返回插件状态。";
+    } else {
+        runtimeStatus = L"Harness 当前未运行；保存后将在下次启动时加载所选插件。";
+    }
+    SetDlgItemTextW(dialog, IDC_PLUGIN_RUNTIME_STATUS, runtimeStatus.c_str());
+    const std::wstring skillSummary = SkillSummaryText();
+    SetDlgItemTextW(dialog, IDC_PLUGIN_SKILL_SUMMARY, skillSummary.c_str());
+}
+
+void RequestAgentPluginStatus() {
+    KillTimer(g_window, kAgentPluginStatusTimer);
+    g_agentPluginSnapshot = {};
+    g_hasAgentPluginSnapshot = false;
+    g_agentPluginStatusPending = false;
+    g_agentPluginStatusError.clear();
+    if (!g_agentRuntime || !g_agentRuntime->IsReady()) {
+        g_agentPluginStatusError = g_agentRuntime && g_agentRuntime->IsRunning()
+            ? L"Harness 尚未就绪，请稍后刷新。"
+            : L"Harness 当前未运行。";
+        RefreshAgentPluginDialog();
+        return;
+    }
+    std::wstring error;
+    if (!g_agentRuntime->RequestPluginSnapshot(error)) {
+        g_agentPluginStatusError = error;
+        RefreshAgentPluginDialog();
+        return;
+    }
+    g_agentPluginStatusPending = true;
+    SetTimer(g_window, kAgentPluginStatusTimer, 10000, nullptr);
+    RefreshAgentPluginDialog();
+}
+
+void OpenAgentSkillDirectory(HWND owner) {
+    const std::wstring workspace = ReadAgentWorkspace();
+    if (workspace.empty()) {
+        MessageBoxW(owner, L"请先选择 Agent 工作目录。", kWindowTitle, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    const std::filesystem::path directory =
+        std::filesystem::path(workspace) / L".desktop-pet" / L"skills";
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+        MessageBoxW(owner, L"无法创建本地技能目录。", kWindowTitle, MB_OK | MB_ICONERROR);
+        return;
+    }
+    if (reinterpret_cast<INT_PTR>(ShellExecuteW(
+            owner, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL
+        )) <= 32) {
+        MessageBoxW(owner, L"无法打开本地技能目录。", kWindowTitle, MB_OK | MB_ICONERROR);
+    }
+}
+
+INT_PTR CALLBACK AgentPluginSettingsDialogProcedure(
+    HWND dialog,
+    UINT message,
+    WPARAM wParam,
+    LPARAM lParam
+) {
+    if (message == WM_INITDIALOG) {
+        auto* data = reinterpret_cast<AgentPluginDialogData*>(lParam);
+        SetWindowLongPtrW(dialog, DWLP_USER, lParam);
+        g_agentPluginDialog = dialog;
+        HICON dialogIcon = reinterpret_cast<HICON>(LoadImageW(
+            g_instance,
+            MAKEINTRESOURCEW(IDI_APP_ICON),
+            IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON),
+            GetSystemMetrics(SM_CYSMICON),
+            LR_DEFAULTCOLOR | LR_SHARED
+        ));
+        if (dialogIcon) SendMessageW(dialog, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(dialogIcon));
+        for (const AgentPluginUiEntry& entry : kAgentPluginUiEntries) {
+            CheckDlgButton(
+                dialog,
+                entry.checkboxId,
+                data && (data->configuredFlags & entry.flag) != 0 ? BST_CHECKED : BST_UNCHECKED
+            );
+        }
+        RefreshAgentPluginDialog();
+        if (g_agentRuntime && g_agentRuntime->IsReady()) RequestAgentPluginStatus();
+        return TRUE;
+    }
+    if (message == WM_COMMAND) {
+        const UINT command = LOWORD(wParam);
+        if (command == IDC_PLUGIN_SKILLS || command == IDC_PLUGIN_TODO ||
+            command == IDC_PLUGIN_GOALS || command == IDC_PLUGIN_WEB_SEARCH) {
+            RefreshAgentPluginDialog();
+            return TRUE;
+        }
+        if (command == IDC_PLUGIN_OPEN_SKILLS) {
+            OpenAgentSkillDirectory(dialog);
+            RefreshAgentPluginDialog();
+            return TRUE;
+        }
+        if (command == IDC_PLUGIN_REFRESH) {
+            RequestAgentPluginStatus();
+            return TRUE;
+        }
+        if (command == IDOK) {
+            auto* data = reinterpret_cast<AgentPluginDialogData*>(
+                GetWindowLongPtrW(dialog, DWLP_USER)
+            );
+            const unsigned int flags = PluginFlagsFromDialog(dialog);
+            if (!SaveAgentPluginFlags(flags)) {
+                MessageBoxW(
+                    dialog,
+                    L"无法保存插件设置，请检查当前账户的注册表权限。",
+                    kWindowTitle,
+                    MB_OK | MB_ICONERROR
+                );
+                return TRUE;
+            }
+            if (data) data->configuredFlags = flags;
+            EndDialog(dialog, IDOK);
+            return TRUE;
+        }
+        if (command == IDCANCEL) {
+            EndDialog(dialog, IDCANCEL);
+            return TRUE;
+        }
+    }
+    if (message == WM_DESTROY && g_agentPluginDialog == dialog) {
+        g_agentPluginDialog = nullptr;
+    }
+    return FALSE;
+}
+
+bool ShowAgentPluginSettings(unsigned int& configuredFlags) {
+    AgentPluginDialogData data;
+    data.configuredFlags = configuredFlags;
+    SetForegroundWindow(g_window);
+    INT_PTR result = DialogBoxParamW(
+        g_instance,
+        MAKEINTRESOURCEW(IDD_AGENT_PLUGIN_SETTINGS),
+        g_window,
+        AgentPluginSettingsDialogProcedure,
+        reinterpret_cast<LPARAM>(&data)
+    );
+    if (result != IDOK) return false;
+    configuredFlags = data.configuredFlags;
+    return true;
+}
+
 INT_PTR CALLBACK DeepSeekChatDialogProcedure(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam) {
     if (message == WM_INITDIALOG) {
         SetWindowLongPtrW(dialog, DWLP_USER, lParam);
         auto* data = reinterpret_cast<ChatDialogData*>(lParam);
-        if (data && !data->attachments.empty()) {
-            SetDlgItemTextW(dialog, IDC_CHAT_ATTACHMENTS, data->attachments.c_str());
+        const bool hasAttachments = data && !data->attachments.empty();
+        if (hasAttachments) {
+            SetDlgItemTextW(dialog, IDC_CHAT_ATTACHMENTS, (L"  附件  " + data->attachments).c_str());
         }
+        HICON dialogIcon = reinterpret_cast<HICON>(LoadImageW(
+            g_instance,
+            MAKEINTRESOURCEW(IDI_APP_ICON),
+            IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON),
+            GetSystemMetrics(SM_CYSMICON),
+            LR_DEFAULTCOLOR | LR_SHARED
+        ));
+        if (dialogIcon) SendMessageW(dialog, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(dialogIcon));
         SendDlgItemMessageW(
             dialog,
             IDC_CHAT_INPUT,
             EM_SETCUEBANNER,
             TRUE,
-            reinterpret_cast<LPARAM>(L"想问哈妮丝什么？")
+            reinterpret_cast<LPARAM>(hasAttachments
+                ? L"输入总结、对比或提取要求…"
+                : L"想问哈妮丝什么？")
         );
         SetFocus(GetDlgItem(dialog, IDC_CHAT_INPUT));
         return FALSE;
@@ -1639,6 +2031,7 @@ bool SendPendingAgentPrompt() {
         ShowSpeechBubble(L"Agent 启动失败：" + error, 15);
         return false;
     }
+    g_agentStartupPurpose = AgentStartupPurpose::None;
     ShowSpeechBubble(L"哈妮丝 Agent 开始工作啦…", -1);
     return true;
 }
@@ -1667,20 +2060,57 @@ bool StartAgentPrompt(
     // Reap a previously exited child and its reader threads before relaunching.
     g_agentRuntime->Shutdown();
     g_agentAllowsAllSafeOperations = false;
+    ClearAgentPluginRuntimeState();
     desktop_pet::AgentLaunchConfiguration configuration;
     configuration.runtimeDirectory = AgentRuntimeDirectory();
     configuration.workspace = workspace;
     configuration.apiKey = apiKey;
     configuration.model = model;
     configuration.maxOutputTokens = 8192;
+    configuration.enabledPluginFlags = ReadAgentPluginFlags();
+    g_agentStartupPurpose = AgentStartupPurpose::Prompt;
     std::wstring error;
     if (!g_agentRuntime->Start(configuration, error)) {
+        g_agentStartupPurpose = AgentStartupPurpose::None;
         g_pendingAgentQuestion.clear();
         g_requestInFlight = false;
         ShowSpeechBubble(L"Agent 启动失败：" + error, 15);
         return false;
     }
     ShowSpeechBubble(L"Agent 正在启动…", -1);
+    return true;
+}
+
+bool RestartConfiguredAgent(AgentStartupPurpose purpose, std::wstring& error) {
+    const std::wstring workspace = ReadAgentWorkspace();
+    if (workspace.empty() || !std::filesystem::is_directory(std::filesystem::path(workspace))) {
+        error = L"请先选择有效的 Agent 工作目录。";
+        return false;
+    }
+    const std::wstring apiKey = ReadDeepSeekApiKey();
+    if (apiKey.empty()) {
+        error = L"请先配置 DeepSeek API Key。";
+        return false;
+    }
+    if (!g_agentRuntime) {
+        g_agentRuntime = std::make_unique<desktop_pet::AgentRuntime>(PostAgentEvent);
+    } else {
+        g_agentRuntime->Shutdown();
+    }
+    g_agentAllowsAllSafeOperations = false;
+    ClearAgentPluginRuntimeState();
+    desktop_pet::AgentLaunchConfiguration configuration;
+    configuration.runtimeDirectory = AgentRuntimeDirectory();
+    configuration.workspace = workspace;
+    configuration.apiKey = apiKey;
+    configuration.model = ReadDeepSeekModel();
+    configuration.maxOutputTokens = 8192;
+    configuration.enabledPluginFlags = ReadAgentPluginFlags();
+    g_agentStartupPurpose = purpose;
+    if (!g_agentRuntime->Start(configuration, error)) {
+        g_agentStartupPurpose = AgentStartupPurpose::None;
+        return false;
+    }
     return true;
 }
 
@@ -2376,6 +2806,51 @@ void ToggleVisibility() {
     }
 }
 
+void ApplyAgentPluginConfiguration(unsigned int flags) {
+    g_agentSessionID = NewAgentSessionID();
+    const std::wstring workspace = ReadAgentWorkspace();
+    const std::wstring apiKey = ReadDeepSeekApiKey();
+    if (workspace.empty() || apiKey.empty()) {
+        ShowSpeechBubble(
+            L"插件设置已保存：" + AgentPluginSummary(flags) +
+                L"。将在配置 API Key 和工作目录后的下次 Agent 启动时生效。",
+            9
+        );
+        return;
+    }
+    ShowSpeechBubble(L"正在应用 Harness 插件设置…", -1);
+    std::wstring error;
+    if (!RestartConfiguredAgent(AgentStartupPurpose::PluginApply, error)) {
+        ShowSpeechBubble(L"插件设置已保存，但 Agent 重启失败：" + error, 15);
+    }
+}
+
+void ShowAgentStatusSummary() {
+    std::wstring runtimeStatus = L"未运行";
+    if (g_agentRuntime && g_agentRuntime->IsReady()) {
+        runtimeStatus = L"已就绪";
+    } else if (g_agentRuntime && g_agentRuntime->IsRunning()) {
+        runtimeStatus = L"正在启动";
+    }
+    const std::wstring workspace = ReadAgentWorkspace();
+    const std::wstring fileContext = g_activeFileAnalysisNames.empty()
+        ? L"未启用"
+        : JoinFileNames(g_activeFileAnalysisNames);
+    std::wstring actual = ActiveAgentPluginSummary();
+    if (g_agentPluginStatusPending) actual = L"正在读取";
+    if (!g_agentPluginStatusError.empty()) actual = g_agentPluginStatusError;
+    ShowSpeechBubble(
+        L"Agent：" + runtimeStatus +
+            L"\n工作目录：" + (workspace.empty() ? L"未选择" : workspace) +
+            L"\n文件分析：" + fileContext +
+            L"\n审批模式：" + (g_agentAllowsAllSafeOperations ? L"允许本轮后续安全操作" : L"逐次确认") +
+            L"\n最大输出 Token：8192" +
+            L"\n已配置：" + AgentPluginSummary(ReadAgentPluginFlags()) +
+            L"\nHarness 实际启用：" + actual,
+        14
+    );
+}
+
 void HandleMenuCommand(UINT command) {
     RecordUserInteraction();
     switch (command) {
@@ -2409,6 +2884,7 @@ void HandleMenuCommand(UINT command) {
             if (SelectAgentWorkspace(workspace)) {
                 if (g_agentRuntime) g_agentRuntime->Shutdown();
                 g_agentAllowsAllSafeOperations = false;
+                ClearAgentPluginRuntimeState();
                 g_agentSessionID.clear();
                 EndActiveFileAnalysisSession();
                 SaveAgentWorkspace(workspace);
@@ -2417,11 +2893,29 @@ void HandleMenuCommand(UINT command) {
             }
             break;
         }
+        case kMenuAgentClearWorkspace:
+            if (g_requestInFlight || g_fileAnalysisPreparing) {
+                ShowSpeechBubble(L"请先停止当前任务，再清除 Agent 工作目录。", 7);
+                break;
+            }
+            if (g_agentRuntime) g_agentRuntime->Shutdown();
+            g_agentAllowsAllSafeOperations = false;
+            g_agentStartupPurpose = AgentStartupPurpose::None;
+            ClearAgentPluginRuntimeState();
+            DeleteDesktopPetRegistryValue(L"AgentWorkspace");
+            EndActiveFileAnalysisSession();
+            g_agentSessionID = NewAgentSessionID();
+            ShowSpeechBubble(L"Agent 工作目录已清除，下次使用时会重新选择。", 7);
+            break;
         case kMenuAgentNewConversation:
             if (g_requestInFlight || g_fileAnalysisPreparing) {
                 ShowSpeechBubble(L"请先等待当前任务结束，再开始新对话。", 7);
                 break;
             }
+            if (g_agentRuntime) g_agentRuntime->Shutdown();
+            g_agentAllowsAllSafeOperations = false;
+            g_agentStartupPurpose = AgentStartupPurpose::None;
+            ClearAgentPluginRuntimeState();
             if (!g_activeFileAnalysisSessionID.empty()) {
                 g_activeFileAnalysisAgentSessionID = L"desktop-pet-file-" + NewGUIDString();
                 g_agentSessionID = g_activeFileAnalysisAgentSessionID;
@@ -2430,6 +2924,40 @@ void HandleMenuCommand(UINT command) {
                 g_agentSessionID = NewAgentSessionID();
             }
             ShowSpeechBubble(L"已开始新的 Agent 对话。", 5);
+            break;
+        case kMenuAgentStopTask:
+            if (g_agentRuntime) g_agentRuntime->Shutdown();
+            g_requestInFlight = false;
+            g_pendingAgentQuestion.clear();
+            g_agentAllowsAllSafeOperations = false;
+            g_agentStartupPurpose = AgentStartupPurpose::None;
+            ClearAgentPluginRuntimeState();
+            ShowSpeechBubble(L"已经停下来了，汪。", 5);
+            break;
+        case kMenuAgentPlugins: {
+            if (g_requestInFlight || g_fileAnalysisPreparing) {
+                ShowSpeechBubble(L"请先等待当前 Agent 任务结束，再修改插件设置。", 7);
+                break;
+            }
+            unsigned int flags = ReadAgentPluginFlags();
+            if (ShowAgentPluginSettings(flags)) ApplyAgentPluginConfiguration(flags);
+            break;
+        }
+        case kMenuAgentRestart: {
+            if (g_requestInFlight || g_fileAnalysisPreparing) {
+                ShowSpeechBubble(L"请先停止当前任务，再重启 Agent。", 7);
+                break;
+            }
+            ShowSpeechBubble(L"正在重启 Agent…", -1);
+            std::wstring error;
+            if (!RestartConfiguredAgent(AgentStartupPurpose::ManualRestart, error)) {
+                ShowSpeechBubble(L"Agent 重启失败：" + error, 15);
+            }
+            break;
+        }
+        case kMenuAgentStatus:
+            if (g_agentRuntime && g_agentRuntime->IsReady()) RequestAgentPluginStatus();
+            ShowAgentStatusSummary();
             break;
         case kMenuFileAnalysisCancel:
             if (g_fileAnalysisRuntime && g_fileAnalysisPreparing) {
@@ -2444,6 +2972,7 @@ void HandleMenuCommand(UINT command) {
                 g_agentSessionID = NewAgentSessionID();
                 if (g_agentRuntime) g_agentRuntime->Shutdown();
                 g_agentAllowsAllSafeOperations = false;
+                ClearAgentPluginRuntimeState();
                 ShowSpeechBubble(L"已结束当前文件分析，文件副本仍会按保留期保存。", 7);
             }
             break;
@@ -2459,6 +2988,9 @@ void HandleMenuCommand(UINT command) {
             }
             std::wstring error;
             if (ClearFileAnalysisCacheInWorkspace(workspace, error)) {
+                if (g_agentRuntime) g_agentRuntime->Shutdown();
+                g_agentAllowsAllSafeOperations = false;
+                ClearAgentPluginRuntimeState();
                 EndActiveFileAnalysisSession();
                 ShowSpeechBubble(L"当前工作目录的文件分析缓存已清除。", 6);
             } else {
@@ -2504,18 +3036,36 @@ void ShowTrayMenu() {
     AppendMenuW(menu, MF_STRING, kMenuDeepSeekChat, hasAgent ? L"开始 Agent 对话..." : L"开始 AI 对话...");
     AppendMenuW(menu, MF_STRING, kMenuDeepSeekSettings, L"设置 DeepSeek API...");
     if (hasAgent) {
-        AppendMenuW(menu, MF_STRING, kMenuAgentWorkspace, L"选择 Agent 工作目录...");
-        AppendMenuW(menu, MF_STRING, kMenuAgentNewConversation, L"开始新 Agent 对话");
+        const bool agentBusy = g_requestInFlight || g_fileAnalysisPreparing;
+        const bool hasWorkspace = !ReadAgentWorkspace().empty();
+        const bool agentRunning = g_agentRuntime && g_agentRuntime->IsRunning();
+        HMENU agentMenu = CreatePopupMenu();
+        AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
+            kMenuAgentWorkspace, L"选择 Agent 工作目录...");
+        AppendMenuW(agentMenu, MF_STRING | (!hasWorkspace || agentBusy ? MF_GRAYED : 0),
+            kMenuAgentClearWorkspace, L"清除 Agent 工作目录");
+        AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
+            kMenuAgentNewConversation, L"新建对话");
+        AppendMenuW(agentMenu, MF_STRING | (!agentRunning && !g_requestInFlight ? MF_GRAYED : 0),
+            kMenuAgentStopTask, L"停止当前任务");
         if (g_fileAnalysisPreparing) {
-            AppendMenuW(menu, MF_STRING, kMenuFileAnalysisCancel, L"取消文件解析");
+            AppendMenuW(agentMenu, MF_STRING, kMenuFileAnalysisCancel, L"取消文件解析");
         }
         AppendMenuW(
-            menu,
+            agentMenu,
             MF_STRING | (g_activeFileAnalysisSessionID.empty() ? MF_GRAYED : 0),
             kMenuFileAnalysisEnd,
             L"结束文件分析"
         );
-        AppendMenuW(menu, MF_STRING, kMenuFileAnalysisClearCache, L"清除文件分析缓存");
+        AppendMenuW(agentMenu, MF_STRING | (!hasWorkspace || agentBusy ? MF_GRAYED : 0),
+            kMenuFileAnalysisClearCache, L"清除文件分析缓存");
+        AppendMenuW(agentMenu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
+            kMenuAgentPlugins, L"插件与技能...");
+        AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
+            kMenuAgentRestart, L"重启 Agent");
+        AppendMenuW(agentMenu, MF_STRING, kMenuAgentStatus, L"查看 Agent 状态");
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(agentMenu), L"本地 Agent");
     }
     AppendMenuW(menu, MF_STRING, kMenuWaitingSettings, L"设置等待时间...");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -2628,6 +3178,18 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         case WM_TIMER:
             if (wParam == kAnimationTimer) {
                 TickAnimation();
+                return 0;
+            }
+            if (wParam == kAgentPluginStatusTimer) {
+                KillTimer(window, kAgentPluginStatusTimer);
+                g_agentPluginStatusPending = false;
+                g_agentPluginStatusError = L"插件状态读取超时，可点击“刷新状态”重试。";
+                RefreshAgentPluginDialog();
+                if (g_agentStartupPurpose == AgentStartupPurpose::PluginApply ||
+                    g_agentStartupPurpose == AgentStartupPurpose::ManualRestart) {
+                    ShowSpeechBubble(L"Agent 已启动，但 Harness 插件状态校验超时。", 10);
+                    g_agentStartupPurpose = AgentStartupPurpose::None;
+                }
                 return 0;
             }
             break;
@@ -2753,6 +3315,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             if (!event) return 0;
             switch (event->type) {
                 case desktop_pet::AgentEventType::Ready:
+                    RequestAgentPluginStatus();
                     SendPendingAgentPrompt();
                     break;
                 case desktop_pet::AgentEventType::Activity:
@@ -2766,11 +3329,46 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 case desktop_pet::AgentEventType::Approval:
                     ResolveAgentApproval(*event);
                     break;
+                case desktop_pet::AgentEventType::PluginStatus:
+                    KillTimer(window, kAgentPluginStatusTimer);
+                    g_agentPluginStatusPending = false;
+                    g_agentPluginStatusError.clear();
+                    if (event->pluginStatusSucceeded) {
+                        g_agentPluginSnapshot = std::move(event->pluginSnapshot);
+                        g_hasAgentPluginSnapshot = true;
+                    } else {
+                        g_agentPluginSnapshot = {};
+                        g_hasAgentPluginSnapshot = false;
+                        g_agentPluginStatusError = event->text.empty()
+                            ? L"暂时无法读取 Harness 插件状态。"
+                            : event->text;
+                    }
+                    RefreshAgentPluginDialog();
+                    if (g_agentStartupPurpose == AgentStartupPurpose::PluginApply) {
+                        ShowSpeechBubble(
+                            event->pluginStatusSucceeded
+                                ? L"插件设置已生效：" + AgentPluginSummary(ReadAgentPluginFlags())
+                                : L"插件设置已保存，但实际状态校验失败：" + g_agentPluginStatusError,
+                            10
+                        );
+                        g_agentStartupPurpose = AgentStartupPurpose::None;
+                    } else if (g_agentStartupPurpose == AgentStartupPurpose::ManualRestart) {
+                        ShowSpeechBubble(
+                            event->pluginStatusSucceeded
+                                ? L"Agent 已重新启动，插件状态已校验。"
+                                : L"Agent 已重新启动，但插件状态校验失败：" + g_agentPluginStatusError,
+                            10
+                        );
+                        g_agentStartupPurpose = AgentStartupPurpose::None;
+                    }
+                    break;
                 case desktop_pet::AgentEventType::Error:
                 case desktop_pet::AgentEventType::Exited:
                     g_requestInFlight = false;
                     g_pendingAgentQuestion.clear();
                     g_agentAllowsAllSafeOperations = false;
+                    g_agentStartupPurpose = AgentStartupPurpose::None;
+                    ClearAgentPluginRuntimeState();
                     ShowSpeechBubble(L"出错了：" + event->text, 15);
                     break;
             }
@@ -2790,6 +3388,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             if (event->type == desktop_pet::FileAnalysisEventType::Completed) {
                 if (g_agentRuntime) g_agentRuntime->Shutdown();
                 g_agentAllowsAllSafeOperations = false;
+                ClearAgentPluginRuntimeState();
                 g_activeFileAnalysisNames = g_pendingFileAnalysisNames;
                 g_activeFileAnalysisWorkspace = g_pendingFileAnalysisWorkspace;
                 g_activeFileAnalysisSessionID = g_pendingFileAnalysisSessionID;
@@ -2824,6 +3423,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         }
         case WM_DESTROY:
             KillTimer(window, kAnimationTimer);
+            KillTimer(window, kAgentPluginStatusTimer);
             if (g_agentRuntime) g_agentRuntime->Shutdown();
             if (g_fileAnalysisRuntime) g_fileAnalysisRuntime->Shutdown();
             if (g_fileDropTarget) {

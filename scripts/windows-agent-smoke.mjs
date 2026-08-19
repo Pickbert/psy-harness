@@ -97,6 +97,7 @@ const child = spawn(nodePath, [entryPath], {
 let stdoutBuffer = ''
 let stderr = ''
 let initialized = false
+let pluginSnapshotReceived = false
 let promptCompleted = false
 let settled = false
 
@@ -126,6 +127,33 @@ function handleLine(line) {
       return
     }
     initialized = true
+    child.stdin.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 'desktop-pet-build-smoke-plugins',
+      method: 'desktopPet/plugins/list',
+      params: {},
+    })}\n`)
+    return
+  }
+  if (frame.id === 'desktop-pet-build-smoke-plugins') {
+    if (frame.error !== undefined) {
+      fail(`Packaged Agent plugin snapshot failed: ${JSON.stringify(frame.error)}`)
+      return
+    }
+    const toolNames = Array.isArray(frame.result?.toolNames) ? frame.result.toolNames : null
+    const skillNames = Array.isArray(frame.result?.skillNames) ? frame.result.skillNames : null
+    if (toolNames === null || skillNames === null) {
+      fail(`Packaged Agent returned an invalid plugin snapshot: ${JSON.stringify(frame.result)}`)
+      return
+    }
+    const requiredTools = ['skill', 'todo_write']
+    const disabledTools = ['create_goal', 'get_goal', 'update_goal', 'web_search']
+    if (!requiredTools.every(name => toolNames.includes(name)) ||
+        disabledTools.some(name => toolNames.includes(name))) {
+      fail(`Packaged Agent plugin snapshot did not match default flags: ${JSON.stringify(toolNames)}`)
+      return
+    }
+    pluginSnapshotReceived = true
     child.stdin.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: 'desktop-pet-build-smoke-prompt',
@@ -171,7 +199,7 @@ child.on('close', code => {
     fail(`Packaged Agent exited before initialization (exit code ${String(code)}).`)
     return
   }
-  if (!promptCompleted || mockRequestCount === 0 || !mockAuthorizationValid) {
+  if (!pluginSnapshotReceived || !promptCompleted || mockRequestCount === 0 || !mockAuthorizationValid) {
     fail('Packaged Agent did not complete the loopback prompt smoke test.')
     return
   }

@@ -116,12 +116,20 @@ void AppendUtf8CodePoint(std::string& output, unsigned int codePoint) {
     }
 }
 
-bool ParseJsonString(const std::string& json, size_t start, std::string& value) {
+bool ParseJsonString(
+    const std::string& json,
+    size_t start,
+    std::string& value,
+    size_t* endPosition = nullptr
+) {
     if (start >= json.size() || json[start] != '"') return false;
     value.clear();
     for (size_t index = start + 1; index < json.size(); ++index) {
         char character = json[index];
-        if (character == '"') return true;
+        if (character == '"') {
+            if (endPosition) *endPosition = index + 1;
+            return true;
+        }
         if (character != '\\') {
             value.push_back(character);
             continue;
@@ -187,6 +195,38 @@ bool ExtractJsonString(
     if (colon == std::string::npos) return false;
     size_t stringStart = json.find_first_not_of(" \t\r\n", colon + 1);
     return stringStart != std::string::npos && ParseJsonString(json, stringStart, value);
+}
+
+bool ExtractJsonStringArray(
+    const std::string& json,
+    const std::string& key,
+    std::vector<std::string>& values,
+    size_t from = 0
+) {
+    size_t keyPosition = FindKey(json, key, from);
+    if (keyPosition == std::string::npos) return false;
+    size_t colon = json.find(':', keyPosition + key.size() + 2);
+    if (colon == std::string::npos) return false;
+    size_t position = json.find_first_not_of(" \t\r\n", colon + 1);
+    if (position == std::string::npos || json[position] != '[') return false;
+    ++position;
+    values.clear();
+    while (position < json.size()) {
+        position = json.find_first_not_of(" \t\r\n", position);
+        if (position == std::string::npos) return false;
+        if (json[position] == ']') return true;
+        if (json[position] != '"') return false;
+        std::string value;
+        size_t endPosition = position;
+        if (!ParseJsonString(json, position, value, &endPosition)) return false;
+        values.push_back(std::move(value));
+        position = json.find_first_not_of(" \t\r\n", endPosition);
+        if (position == std::string::npos) return false;
+        if (json[position] == ']') return true;
+        if (json[position] != ',') return false;
+        ++position;
+    }
+    return false;
 }
 
 bool ExtractJsonId(const std::string& json, std::string& value) {
@@ -370,7 +410,8 @@ bool AgentRuntime::Start(
     ready_.store(false);
     failureReported_.store(false);
     readersRemaining_.store(0);
-    nextRequestId_ = 1;
+    nextRequestId_.store(1);
+    pluginSnapshotRequestId_.store(0);
     streamedText_.clear();
     finalText_.clear();
     {
@@ -446,10 +487,12 @@ bool AgentRuntime::Start(
     environment[L"DSH_SKILL_DIR"] = skillRoot.wstring();
     environment[L"DSH_SYSTEM_PROMPT"] = WideFromUtf8(systemPrompt);
     environment[L"DSH_TELEMETRY_MODE"] = L"DISABLED";
-    environment[L"DSH_PLUGIN_SKILLS"] = L"1";
-    environment[L"DSH_PLUGIN_TODO"] = L"1";
-    environment[L"DSH_PLUGIN_GOALS"] = L"0";
-    environment[L"DSH_PLUGIN_WEB_SEARCH"] = L"0";
+    const unsigned int plugins = configuration.enabledPluginFlags & kAllAgentPluginFlags;
+    environment[L"DSH_PLUGIN_SKILLS"] = (plugins & AgentPluginSkills) != 0 ? L"1" : L"0";
+    environment[L"DSH_PLUGIN_TODO"] = (plugins & AgentPluginTodo) != 0 ? L"1" : L"0";
+    environment[L"DSH_PLUGIN_GOALS"] = (plugins & AgentPluginGoals) != 0 ? L"1" : L"0";
+    environment[L"DSH_PLUGIN_WEB_SEARCH"] =
+        (plugins & AgentPluginWebSearch) != 0 ? L"1" : L"0";
     if (!environment.contains(L"HOME") && environment.contains(L"USERPROFILE")) {
         environment[L"HOME"] = environment[L"USERPROFILE"];
     }
@@ -595,6 +638,25 @@ bool AgentRuntime::SendPrompt(
     return true;
 }
 
+bool AgentRuntime::RequestPluginSnapshot(std::wstring& error) {
+    if (!ready_.load() || !running_.load()) {
+        error = L"Agent 尚未就绪。";
+        return false;
+    }
+    const unsigned long long id = nextRequestId_++;
+    std::ostringstream request;
+    request << "{\"jsonrpc\":\"2.0\",\"id\":\"" << id
+            << "\",\"method\":\"desktopPet/plugins/list\",\"params\":{}}";
+    pluginSnapshotRequestId_.store(id);
+    if (!WriteFrame(request.str())) {
+        unsigned long long expected = id;
+        pluginSnapshotRequestId_.compare_exchange_strong(expected, 0);
+        error = L"无法读取 Harness 插件状态。";
+        return false;
+    }
+    return true;
+}
+
 void AgentRuntime::RespondToApproval(const std::wstring& rpcId, const wchar_t* outcome) {
     std::ostringstream response;
     response << "{\"jsonrpc\":\"2.0\",\"id\":\""
@@ -606,6 +668,7 @@ void AgentRuntime::RespondToApproval(const std::wstring& rpcId, const wchar_t* o
 
 void AgentRuntime::Shutdown() {
     if (!running_.load() && !stdoutThread_.joinable() && !stderrThread_.joinable()) {
+        pluginSnapshotRequestId_.store(0);
         CloseProcessHandles();
         return;
     }
@@ -634,6 +697,7 @@ void AgentRuntime::Shutdown() {
     if (startupThread_.joinable()) startupThread_.join();
     running_.store(false);
     ready_.store(false);
+    pluginSnapshotRequestId_.store(0);
     CloseProcessHandles();
     shuttingDown_.store(false);
 }
@@ -727,6 +791,41 @@ void AgentRuntime::HandleFrame(const std::string& frame) {
             ready_.store(true);
             if (startupStopEvent_) SetEvent(startupStopEvent_);
             Emit({AgentEventType::Ready, L"Agent 已就绪"});
+            return;
+        }
+        unsigned long long pluginRequestId = pluginSnapshotRequestId_.load();
+        if (pluginRequestId != 0 && id == std::to_string(pluginRequestId)) {
+            pluginSnapshotRequestId_.compare_exchange_strong(pluginRequestId, 0);
+            AgentEvent event;
+            event.type = AgentEventType::PluginStatus;
+            std::string errorMessage;
+            size_t errorPosition = FindKey(frame, "error");
+            if (errorPosition != std::string::npos &&
+                ExtractJsonString(frame, "message", errorMessage, errorPosition)) {
+                event.text = L"插件状态读取失败：" + WideFromUtf8(errorMessage);
+                Emit(std::move(event));
+                return;
+            }
+            std::vector<std::string> toolNames;
+            std::vector<std::string> skillNames;
+            size_t resultPosition = FindKey(frame, "result");
+            if (resultPosition == std::string::npos ||
+                !ExtractJsonStringArray(frame, "toolNames", toolNames, resultPosition) ||
+                !ExtractJsonStringArray(frame, "skillNames", skillNames, resultPosition)) {
+                event.text = L"插件状态读取失败：Harness 返回了无效数据。";
+                Emit(std::move(event));
+                return;
+            }
+            event.pluginStatusSucceeded = true;
+            event.pluginSnapshot.toolNames.reserve(toolNames.size());
+            for (const std::string& name : toolNames) {
+                event.pluginSnapshot.toolNames.push_back(WideFromUtf8(name));
+            }
+            event.pluginSnapshot.skillNames.reserve(skillNames.size());
+            for (const std::string& name : skillNames) {
+                event.pluginSnapshot.skillNames.push_back(WideFromUtf8(name));
+            }
+            Emit(std::move(event));
             return;
         }
         std::string errorMessage;

@@ -74,7 +74,7 @@ build/windows/DesktopPet-Windows-x64.exe
 
 把这一个 `.exe` 文件复制到 Windows 10 或 Windows 11 电脑即可运行基础宠物和普通 DeepSeek 对话。启动后，小狗会出现在屏幕右下角，托盘区会出现控制图标；右键小狗或托盘图标可以暂停、隐藏、调整大小和退出。
 
-Windows 本地 Agent 版需要将 `DesktopPet-Windows-x64.exe` 和同级的 `DesktopPetAgent/` 目录一起分发；运行时已包含 Node，用户电脑不需要另行安装 Node、pnpm、Python、Swift 或 .NET。首次 Agent 对话会选择长期工作目录；菜单可切换目录或开始新会话。
+Windows 本地 Agent 版需要将 `DesktopPet-Windows-x64.exe` 和同级的 `DesktopPetAgent/` 目录一起分发；运行时已包含 Node，用户电脑不需要另行安装 Node、pnpm、Python、Swift 或 .NET。首次 Agent 对话会选择长期工作目录；托盘菜单中的“本地 Agent”子菜单可管理工作目录、对话、任务、插件、重启和运行状态。
 
 正式的 Windows `0.7.1` 发布同时提供安装包和便携 ZIP。普通用户下载 `DesktopPet-Windows-v0.7.1-Agent-x64-Setup.exe` 后直接安装即可；便携版解压 `DesktopPet-Windows-v0.7.1-Agent-x64-Portable.zip` 后运行其中的 EXE。两者都已经包含完整 Agent 和文件解析运行时，不需要在目标电脑重新编译。
 
@@ -118,7 +118,7 @@ DeepSeek V4 的模型上下文由 Harness 按 `1,000,000` Token 管理，与单�
 
 Agent 调用工具时，跟随小狗的气泡顶部会显示无确定进度的旋转指示器和当前工具名称；等待审批、执行成功和执行失败会显示对应状态。Harness 暂未提供工具执行百分比，因此界面不会伪造百分比进度。
 
-“本地 Agent → 插件与技能…”提供经过审核的 Harness 插件白名单。默认启用本地技能库和 `todo_write`，长期目标与 DeepSeek 网页搜索可按需开启；搜索复用钥匙串中的 DeepSeek API Key，但会产生额外模型调用和 Token 消耗。保存后 App 会重启 sidecar，并通过 `desktopPet/plugins/list` 读取 Harness 的真实工具注册表显示生效状态，而不是仅显示前端开关。
+“本地 Agent → 插件与技能…”提供经过审核的 Harness 插件白名单。默认启用本地技能库和 `todo_write`，长期目标与 DeepSeek 网页搜索可按需开启；搜索在 macOS 复用钥匙串、在 Windows 复用凭据管理器中的 DeepSeek API Key，但会产生额外模型调用和 Token 消耗。保存后 App 会重启 sidecar，并通过 `desktopPet/plugins/list` 读取 Harness 的真实工具注册表显示生效状态，而不是仅显示前端开关。Windows 的选择保存在 `HKCU\Software\DesktopPet` 的 `AgentEnabledPlugins` `REG_DWORD` 中，显式关闭全部插件也会被保留。
 
 本地技能位于所选工作目录的 `.desktop-pet/skills`，支持 `<name>/SKILL.md` 和平铺 Markdown。该目录仍位于 `workspace-write` 沙箱内，App 不会扫描 `~/.agents`、`~/.dsh` 或其他用户级技能目录。外部 npm/GitHub 插件不会在运行时下载执行；需要固定版本、审计并重新构建 sidecar。
 
