@@ -37,12 +37,15 @@ cd "$project_dir"
     -static-libstdc++ \
     -Wl,--gc-sections \
     windows/DesktopPet.cpp \
+    windows/AgentRuntime.cpp \
+    windows/FileAnalysisRuntime.cpp \
     "$resource_object" \
     -lgdiplus \
     -lshell32 \
     -lole32 \
     -ladvapi32 \
     -lwinhttp \
+    -lcomctl32 \
     -luuid \
     -o "$output_exe"
 

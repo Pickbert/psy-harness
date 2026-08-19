@@ -2,7 +2,7 @@ import AppKit
 
 final class AgentTaskPanelController: NSObject, NSWindowDelegate {
     private let panel: NSPanel
-    private let titleLabel = NSTextField(labelWithString: "桌面小柴 Agent")
+    private let titleLabel = NSTextField(labelWithString: "哈妮丝 Agent")
     private let statusLabel = NSTextField(labelWithString: "准备中…")
     private let textView = NSTextView()
     private let approvalCard = NSView()
@@ -31,7 +31,7 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
     }
 
     func show(workspace: URL) {
-        titleLabel.stringValue = "桌面小柴 Agent · \(workspace.lastPathComponent)"
+        titleLabel.stringValue = "哈妮丝 Agent · \(workspace.lastPathComponent)"
         statusLabel.stringValue = "正在连接 DeepSeek Harness…"
         transcript = ""
         activityLines.removeAll()
@@ -158,12 +158,12 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
     }
 
     private func configure() {
-        panel.title = "桌面小柴 Agent"
+        panel.title = "哈妮丝 Agent"
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.delegate = self
-        panel.setAccessibilityTitle("桌面小柴 Agent 任务面板")
+        panel.setAccessibilityTitle("哈妮丝 Agent 任务面板")
 
         let background = NSVisualEffectView()
         background.translatesAutoresizingMaskIntoConstraints = false

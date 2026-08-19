@@ -1,4 +1,4 @@
-# 桌面小柴
+# 哈妮丝
 
 一只运行在 macOS 和 Windows 桌面上的原生小狗宠物。它会在当前屏幕上随机散步、待机和打盹，也可以被拖动和点击互动。
 
@@ -21,8 +21,8 @@
 - macOS 支持全局快捷键 `⌥⌘0`，在其他应用中也能立即打开 DeepSeek 对话框
 - macOS AI 输入框采用 Alfred 风格的深色极简浮层，支持回车发送和 `Esc` 取消
 - DeepSeek 回复以小狗对话气泡展示，支持 Markdown 与原生表格渲染，并保留最近 6 轮上下文
-- Apple Silicon + macOS 14 及以上可启用本地 DeepSeek Harness Agent，读取文件、修改项目和运行命令
-- macOS 可将 1–5 个 PDF、DOCX、文本、Markdown、CSV、JSON 或常见代码文件直接拖到小狗身上，再输入自定义分析要求
+- Apple Silicon + macOS 14 及以上以及 Windows 10/11 x64 可启用本地 DeepSeek Harness Agent，读取文件、修改项目和运行命令
+- macOS 与完整 Windows Agent 版均可将 1–5 个 PDF、DOCX、XLSX、XLSM、文本、Markdown、CSV、JSON 或常见代码文件直接拖到小狗身上，再输入自定义分析要求
 - Agent 使用用户选择的独立工作目录；写入和命令可“允许一次”或在当前运行期间“允许所有”，高风险和越界操作始终拒绝
 - “插件与技能”设置直接控制 Harness Cordis 插件，可启用本地 Skill、任务清单、长期目标和 DeepSeek 网页搜索
 - 记忆上次选择的小狗尺寸
@@ -32,6 +32,7 @@
 
 - macOS 13 或更新版本（本地 Agent 需要 Apple Silicon 和 macOS 14+）
 - Xcode 15 或兼容的 Swift 5.9 工具链
+- Windows 10/11 x64（Windows 本地 Agent 需要随包分发的 `DesktopPetAgent/` 目录）
 
 ## 快速运行
 
@@ -71,7 +72,17 @@ swift test
 build/windows/DesktopPet-Windows-x64.exe
 ```
 
-把这一个 `.exe` 文件复制到 Windows 10 或 Windows 11 电脑即可运行。启动后，小狗会出现在屏幕右下角，托盘区会出现控制图标；右键小狗或托盘图标可以暂停、隐藏、调整大小和退出。
+把这一个 `.exe` 文件复制到 Windows 10 或 Windows 11 电脑即可运行基础宠物和普通 DeepSeek 对话。启动后，小狗会出现在屏幕右下角，托盘区会出现控制图标；右键小狗或托盘图标可以暂停、隐藏、调整大小和退出。
+
+Windows 本地 Agent 版需要将 `DesktopPet-Windows-x64.exe` 和同级的 `DesktopPetAgent/` 目录一起分发；运行时已包含 Node，用户电脑不需要另行安装 Node、pnpm、Python、Swift 或 .NET。首次 Agent 对话会选择长期工作目录；菜单可切换目录或开始新会话。
+
+正式的 Windows `0.7.0` 发布同时提供安装包和便携 ZIP。普通用户下载 `DesktopPet-Windows-v0.7.0-Agent-x64-Setup.exe` 后直接安装即可；便携版解压 `DesktopPet-Windows-v0.7.0-Agent-x64-Portable.zip` 后运行其中的 EXE。两者都已经包含完整 Agent 和文件解析运行时，不需要在目标电脑重新编译。
+
+首版安装包尚未使用 Authenticode 代码签名，Windows SmartScreen 可能显示“未知发布者”。可用发布页中的 `DesktopPet-Windows-v0.7.0-Agent-x64-SHA256SUMS.txt` 校验文件完整性：
+
+```powershell
+Get-FileHash .\DesktopPet-Windows-v0.7.0-Agent-x64-Setup.exe -Algorithm SHA256
+```
 
 ## DeepSeek AI 对话
 
@@ -81,19 +92,25 @@ build/windows/DesktopPet-Windows-x64.exe
 4. 在短时间内连续点击小狗 3 次，输入问题并按回车发送；macOS 也可在任意应用中按 `⌥⌘0` 直接唤醒对话框。
 5. 回复会显示在小狗上方的对话气泡中；再次三连击可以继续上下文对话。
 
-### 拖拽文件分析（macOS Agent）
+### 拖拽文件分析（macOS 与 Windows Agent）
 
-把文件拖到小狗身上后，小狗会停止移动并显示橙色接收高亮。本地解析完成后，Alfred 风格输入框会显示附件名称；输入总结、对比、提取数据或其他要求并按回车即可。之后三连击或按 `⌥⌘0` 会继续当前文件会话。
+把文件拖到小狗身上后，小狗会停止移动并显示橙色接收高亮。本地解析完成后，输入框会显示附件名称；输入总结、对比、提取数据或其他要求并按回车即可。之后三连击会继续当前文件会话；macOS 也可使用 `⌥⌘0`。
 
-首版支持 PDF、DOCX、TXT、Markdown、CSV、JSON 和常见文本代码文件。PDF 按页保留页码；扫描版 PDF 暂不支持 OCR；DOCX 中的嵌入图片暂不分析。文件会复制到 `Application Support/DesktopPet/FileSessions/<UUID>` 的隔离工作区，Agent 通过 `glob`、`grep` 和 `read` 按需检索分块，不会直接修改用户原文件。隔离副本如需写入仍遵循 Agent 审批流程。
+支持 PDF、DOCX、XLSX、XLSM、TXT、Markdown、CSV、JSON 和常见文本代码文件。PDF 按页保留页码；扫描版 PDF 暂不支持 OCR；DOCX 中的嵌入图片暂不分析。Excel 会按工作表提取单元格坐标、值、公式文本和文件内缓存结果，但不会重新计算公式、执行宏或还原图表、图片、数据透视表与视觉样式；旧版二进制 `.xls` 暂不支持。Windows 解析器在独立子进程运行，菜单可取消解析；超过 5 分钟会自动停止，不会阻塞宠物界面。
 
-每批最多 5 个文件，原始文件总量和解析后文本总量分别最多 100 MB。单文件默认上限为 10 MB，可在“设置 DeepSeek…”中调整为 1–100 MB。文件会话保留 7 天；可在“本地 Agent”菜单中结束当前文件分析或清除全部文件分析缓存。文件 Agent 启动失败时会保留会话供重试，不会降级到无法读取附件的普通聊天。
+文件会复制到所选 Agent 工作目录的可见目录 `DesktopPet-FileAnalysis/<会话ID>`。Agent 的执行目录、沙箱根目录和本地技能目录始终保持为原工作目录，因此可以直接复用该目录已有的 `.desktop-pet/skills`、代码和转换脚本。Agent 通过 `glob`、`grep` 和 `read` 按需检索会话分块，不会直接修改用户原文件；隔离副本如需写入仍遵循正常审批流程。该目录可能显示为 Git 未跟踪内容，App 不会自动修改项目的 `.gitignore`。
 
-### 本地 Harness Agent（macOS）
+每批最多 5 个文件，原始文件总量和解析后文本总量分别最多 100 MB。单文件默认上限为 10 MB，可在“设置 DeepSeek…”中调整为 1–100 MB。文件会话保留 7 天；可在“本地 Agent”菜单中结束当前文件分析或清除当前工作目录的文件分析缓存。切换工作目录会结束当前文件分析，但不会立即删除旧目录。文件 Agent 启动失败时会保留会话供重试，不会降级到无法读取附件的普通聊天。
+
+### 本地 Harness Agent（macOS 与 Windows）
 
 在 Apple Silicon、macOS 14 或更新版本上，三连击或 `⌥⌘0` 会进入本地 Agent 模式。第一次使用会要求选择工作目录，之后可以在菜单栏或小狗右键菜单的“本地 Agent”中更换或清除目录、新建对话、停止任务、重启进程和查看状态。
 
-Agent 是 App 内独立的预编译 sidecar，不从 TypeScript 源码启动，也不依赖用户电脑上的 Node、pnpm 或 Python。API Key 仍从 macOS 钥匙串读取，只通过子进程环境传入；会话数据保存在 `Application Support/DesktopPet/Agent/Sessions`。Windows、Intel Mac 和 macOS 13 不启动 Agent，继续使用原来的普通 DeepSeek 对话。
+Agent 是 App 监管的独立 sidecar，不从项目 TypeScript 源码直接启动，也不依赖用户电脑上的 Node、pnpm 或 Python。macOS 使用单文件运行时；Windows 随包携带固定 Node 运行时和审计过的 Harness 闭包。API Key 在 macOS 从钥匙串、在 Windows 从凭据管理器读取，只通过经过白名单化的子进程环境传入；Windows 会话数据保存在 `%LOCALAPPDATA%\DesktopPet\Agent\Sessions`。Intel Mac 和 macOS 13 不启动 Agent，继续使用普通 DeepSeek 对话。
+
+Windows 宿主通过匿名管道运行换行分隔的 JSON-RPC，并用 Job Object 确保 App 退出时一并回收 sidecar 及其子进程。命令工具使用 PowerShell 方言，在 Windows 上由 Harness 的 ACL + 受限令牌后端执行 `workspace-write` 隔离；隔离后端不可用时会失败关闭，不会降级为无限制命令。写入和命令会显示“允许一次 / 本次运行允许后续安全操作 / 拒绝”对话框，删除等明显高风险操作仍会自动拒绝。
+
+Windows 版覆盖 Agent 对话、工作目录、本地 Skill、文件/命令工具、会话持久化、操作审批和拖拽文件预处理。拖入的文件副本仍位于长期工作目录下，Agent 不会改用临时会话目录作为 `cwd`。
 
 原生桥接使用 Harness 返回的 `messageId` 等待对应的持久化入队回执，再收集该回执之后直到下一次空闲状态的通知。应用重启并恢复旧会话时，历史恢复事件不会被误判为新问题的结果。
 
@@ -123,7 +140,7 @@ DESKTOPPET_REQUIRE_AGENT_RUNTIME=1 ./scripts/build-app.sh release
 
 ## 等待召唤
 
-小柴默认在连续 3 分钟没有点击、拖动、菜单操作或聊天后蹲坐等待。等待时仍会自然呼吸、随机眨眼，并偶尔抖动耳朵和尾巴；任何互动都会立即唤醒它。
+哈妮丝默认在连续 3 分钟没有点击、拖动、菜单操作或聊天后蹲坐等待。等待时仍会自然呼吸、随机眨眼，并偶尔抖动耳朵和尾巴；任何互动都会立即唤醒它。
 
 可通过菜单中的“设置等待时间…”填写 0–1440 分钟。填写 `0` 会关闭自动等待召唤，设置会在重启后保留。
 
@@ -149,6 +166,17 @@ DESKTOPPET_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 ```bash
 brew install mingw-w64
 ```
+
+交叉编译只生成不带 Agent 运行时的单 EXE。完整 Windows Agent 发布包必须在 Windows x64 上使用 Node 22.19+ / 24+、Visual Studio C++ Build Tools 和 Windows SDK 构建：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-package.ps1 `
+  -CreateInstaller -CreatePortableZip
+```
+
+脚本会生成包含 `DesktopPet-Windows-x64.exe` 和 `DesktopPetAgent/` 的完整目录、安装包、便携 ZIP 与 SHA-256 清单，并校验 ConPTY、Koffi、ExcelJS、Mammoth 和 PDF.js 是否齐全。为避免旧依赖混入新发布包，输出目录已存在时脚本会直接报错；可通过 `-OutputDirectory` 指定一个新目录。
+
+仓库的 `Windows Agent Release` GitHub Actions 工作流会在固定的 `windows-2022` runner 上执行同样的构建。手动运行工作流可下载测试制品；推送与 `windows/VERSION` 一致的 `v0.7.0` 标签会自动创建 GitHub Release。当前无签名证书时生成未签名包；以后配置 `WINDOWS_CERTIFICATE_BASE64` 与 `WINDOWS_CERTIFICATE_PASSWORD` Secrets 后，流水线会自动签名主程序、安装器和卸载程序。
 
 核心文件：
 

@@ -1,5 +1,20 @@
 import AppKit
 
+enum ChatStartGate {
+    static func blockMessage(
+        isRequestInFlight: Bool,
+        isPreparingFileAnalysis: Bool
+    ) -> String? {
+        if isPreparingFileAnalysis {
+            return "文件仍在本地解析，请稍等一下～"
+        }
+        if isRequestInFlight {
+            return "我还在想上一条问题，请稍等一下～"
+        }
+        return nil
+    }
+}
+
 final class PetController: NSObject {
     private static let waitingTimeoutDefaultsKey = "waitingTimeoutMinutes"
     private static let defaultWaitingTimeoutMinutes = 3
@@ -60,8 +75,11 @@ final class PetController: NSObject {
             defer: false
         )
         super.init()
-        try? fileAnalysisStore.cleanupExpiredSessions()
-        activeFileAnalysisSession = fileAnalysisStore.activeSession()
+        if let workspace = agentWorkspaceStore.workspaceURL() {
+            activateSecurityScopedWorkspace(workspace)
+            try? fileAnalysisStore.cleanupExpiredSessions(in: workspace)
+            activeFileAnalysisSession = fileAnalysisStore.activeSession(in: workspace)
+        }
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
@@ -70,8 +88,8 @@ final class PetController: NSObject {
         window.isMovableByWindowBackground = false
         window.hidesOnDeactivate = false
         window.contentView = petView
-        window.title = "桌面小柴"
-        window.setAccessibilityTitle("桌面小柴")
+        window.title = "哈妮丝"
+        window.setAccessibilityTitle("哈妮丝")
 
         petView.onDragStarted = { [weak self] in
             self?.beginDragging()
@@ -94,6 +112,7 @@ final class PetController: NSObject {
                 && !self.isRequestInFlight
                 && !self.isAwaitingAgentApproval
                 && !self.isPreparingFileAnalysis
+                && !self.chatInput.isVisible
         }
         petView.onFileDragStateChanged = { [weak self] active in
             guard let self else { return }
@@ -153,6 +172,7 @@ final class PetController: NSObject {
 
     func hide() {
         recordUserInteraction()
+        chatInput.cancelPrompt()
         agentPanel.cancelApproval()
         window.orderOut(nil)
         speechBubble.hide()
@@ -169,6 +189,7 @@ final class PetController: NSObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        chatInput.cancelPrompt()
         agentPanel.cancelApproval()
         speechBubble.hide()
         agentManager.shutdown()
@@ -281,8 +302,11 @@ final class PetController: NSObject {
 
     @objc func startDeepSeekChat() {
         recordUserInteraction()
-        guard !isRequestInFlight else {
-            showSpeech("我还在想上一条问题，请稍等一下～", duration: 5)
+        if let message = ChatStartGate.blockMessage(
+            isRequestInFlight: isRequestInFlight,
+            isPreparingFileAnalysis: isPreparingFileAnalysis
+        ) {
+            showSpeech(message, duration: 5)
             return
         }
         guard settingsStore.apiKey() != nil else {
@@ -292,29 +316,37 @@ final class PetController: NSObject {
         }
 
         if AgentProcessManager.platformSupported, let fileSession = activeFileAnalysisSession {
-            guard FileManager.default.fileExists(atPath: fileSession.workspaceURL.path) else {
+            guard let workspace = agentWorkspaceStore.workspaceURL(),
+                  FileManager.default.fileExists(atPath: fileSession.sessionURL.path)
+            else {
                 activeFileAnalysisSession = nil
                 fileAnalysisStore.endActiveSession()
                 showError(FileAnalysisError.invalidSession)
                 return
             }
-            guard let question = chatInput.prompt(
+            chatInput.prompt(
                 on: window.screen,
                 attachments: fileSession.displayNames
-            ) else { return }
-            sendToAgent(
-                question,
-                workspace: fileSession.workspaceURL,
-                sessionID: fileSession.agentSessionID,
-                fileSession: fileSession
-            )
+            ) { [weak self] question in
+                guard let self, let question else { return }
+                self.sendToAgent(
+                    question,
+                    workspace: workspace,
+                    sessionID: fileSession.agentSessionID,
+                    fileSession: fileSession
+                )
+            }
         } else if AgentProcessManager.platformSupported {
             guard let workspace = agentWorkspaceStore.workspaceURL() ?? chooseAgentWorkspace() else { return }
-            guard let question = chatInput.prompt(on: window.screen) else { return }
-            sendToAgent(question, workspace: workspace)
+            chatInput.prompt(on: window.screen) { [weak self] question in
+                guard let self, let question else { return }
+                self.sendToAgent(question, workspace: workspace)
+            }
         } else {
-            guard let question = chatInput.prompt(on: window.screen) else { return }
-            sendToDeepSeek(question)
+            chatInput.prompt(on: window.screen) { [weak self] question in
+                guard let self, let question else { return }
+                self.sendToDeepSeek(question)
+            }
         }
     }
 
@@ -331,6 +363,8 @@ final class PetController: NSObject {
         recordUserInteraction()
         agentManager.shutdown()
         releaseSecurityScopedWorkspace()
+        fileAnalysisStore.endActiveSession()
+        activeFileAnalysisSession = nil
         agentWorkspaceStore.clear()
         resetAgentSession()
         showSpeech("Agent 工作目录已清除，下次使用时会重新选择。", duration: 7)
@@ -363,7 +397,6 @@ final class PetController: NSObject {
         }
         agentPanel.cancelApproval()
         agentManager.shutdown()
-        releaseSecurityScopedWorkspace()
         fileAnalysisStore.endActiveSession()
         activeFileAnalysisSession = nil
         isRequestInFlight = false
@@ -376,12 +409,16 @@ final class PetController: NSObject {
             showSpeech("请先等待当前 Agent 任务结束，再清除文件分析缓存。", duration: 7)
             return
         }
+        guard let workspace = agentWorkspaceStore.workspaceURL() else {
+            showSpeech("请先选择 Agent 工作目录，再清除其中的文件分析缓存。", duration: 7)
+            return
+        }
+        activateSecurityScopedWorkspace(workspace)
         agentManager.shutdown()
-        releaseSecurityScopedWorkspace()
         do {
-            try fileAnalysisStore.clearCache()
+            try fileAnalysisStore.clearCache(in: workspace)
             activeFileAnalysisSession = nil
-            showSpeech("文件分析缓存已经清除。", duration: 6)
+            showSpeech("当前工作目录的文件分析缓存已经清除。", duration: 6)
         } catch {
             showError(error)
         }
@@ -472,7 +509,7 @@ final class PetController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "等待召唤设置"
-        alert.informativeText = "连续多少分钟没有互动后，让小柴蹲坐等待？填写 0 可关闭。"
+        alert.informativeText = "连续多少分钟没有互动后，让哈妮丝蹲坐等待？填写 0 可关闭。"
         let inputField = NSTextField(frame: CGRect(x: 0, y: 0, width: 260, height: 26))
         inputField.stringValue = String(waitingTimeoutMinutes)
         inputField.placeholderString = "分钟数（0–1440）"
@@ -647,7 +684,7 @@ final class PetController: NSObject {
 
     private func showContextMenu(with event: NSEvent) {
         recordUserInteraction()
-        let menu = NSMenu(title: "桌面小柴")
+        let menu = NSMenu(title: "哈妮丝")
         let chatItem = NSMenuItem(title: "开始 AI 对话…", action: #selector(startDeepSeekChat), keyEquivalent: "")
         chatItem.target = self
         menu.addItem(chatItem)
@@ -724,7 +761,7 @@ final class PetController: NSObject {
             return
         }
         guard !isRequestInFlight, !isAwaitingAgentApproval, !isPreparingFileAnalysis else {
-            showSpeech("小柴正在处理任务，请完成后再拖入文件。", duration: 6)
+            showSpeech("哈妮丝正在处理任务，请完成后再拖入文件。", duration: 6)
             return
         }
         guard settingsStore.apiKey() != nil else {
@@ -732,6 +769,9 @@ final class PetController: NSObject {
             guard settingsStore.apiKey() != nil else { return }
             return handleDroppedFiles(urls)
         }
+        guard let workspace = agentWorkspaceStore.workspaceURL() ?? chooseAgentWorkspace() else { return }
+        activateSecurityScopedWorkspace(workspace)
+        try? fileAnalysisStore.cleanupExpiredSessions(in: workspace)
 
         isPreparingFileAnalysis = true
         targetX = nil
@@ -747,6 +787,7 @@ final class PetController: NSObject {
             let result = Result {
                 try self.fileAnalysisStore.createSession(
                     from: urls,
+                    in: workspace,
                     maxFileSizeMB: limitMB
                 )
             }
@@ -757,22 +798,23 @@ final class PetController: NSObject {
                 case let .success(session):
                     self.agentPanel.cancelApproval()
                     self.agentManager.shutdown()
-                    self.releaseSecurityScopedWorkspace()
                     self.activeFileAnalysisSession = session
                     self.showSpeech(
                         "文件已准备好：\(session.displayNames.joined(separator: "、"))\n请输入你希望我怎样分析。",
                         duration: 8
                     )
-                    guard let question = self.chatInput.prompt(
+                    self.chatInput.prompt(
                         on: self.window.screen,
                         attachments: session.displayNames
-                    ) else { return }
-                    self.sendToAgent(
-                        question,
-                        workspace: session.workspaceURL,
-                        sessionID: session.agentSessionID,
-                        fileSession: session
-                    )
+                    ) { [weak self] question in
+                        guard let self, let question else { return }
+                        self.sendToAgent(
+                            question,
+                            workspace: workspace,
+                            sessionID: session.agentSessionID,
+                            fileSession: session
+                        )
+                    }
                 case let .failure(error):
                     self.showError(error)
                 }
@@ -789,7 +831,7 @@ final class PetController: NSObject {
         guard let apiKey = settingsStore.apiKey() else { return }
         activateSecurityScopedWorkspace(workspace)
         isRequestInFlight = true
-        showSpeech("小柴 Agent 开始工作啦…", duration: 5)
+        showSpeech("哈妮丝 Agent 开始工作啦…", duration: 5)
         let prompt = fileSession.map { fileAnalysisPrompt(question: question, session: $0) } ?? question
         let requestedSessionID = sessionID ?? agentSessionID
         agentManager.start(
@@ -834,7 +876,7 @@ final class PetController: NSObject {
     private func fileAnalysisPrompt(question: String, session: FileAnalysisSession) -> String {
         let names = session.displayNames.map { "- \($0)" }.joined(separator: "\n")
         return """
-        你正在一个桌面小柴建立的隔离文件分析工作区中。先读取根目录的 manifest.md，随后优先使用 glob、grep、read 按需检索 chunks/ 和 normalized/，不要在回答前无差别读取所有全文。回答时尽量注明文件名、PDF 页码或原始行号。sources/ 中是隔离副本，绝不能尝试定位或修改用户原文件；若用户要求修改文件，只能修改本工作区里的隔离副本，并遵循正常审批流程。
+        你正在用户长期使用的 Agent 工作目录中执行任务。先读取 `\(session.relativePath)/manifest.md`，随后优先复用当前工作目录已有的 Skill、脚本和工具流程；检索附件内容时，按需使用 glob、grep、read 读取 `\(session.relativePath)/chunks/` 与 `\(session.relativePath)/normalized/`，不要在回答前无差别读取所有全文。回答时尽量注明文件名、PDF 页码、Excel 工作表与单元格坐标或标准化文本行号。`\(session.relativePath)/sources/` 中是用户拖入文件的隔离副本，绝不能尝试定位或修改用户原文件；若用户要求修改文件，只能修改工作目录里的隔离副本或另存结果，并遵循正常审批流程。
 
         本次文件：
         \(names)
@@ -937,7 +979,7 @@ final class PetController: NSObject {
     private func chooseAgentWorkspace() -> URL? {
         NSApp.activate(ignoringOtherApps: true)
         let picker = NSOpenPanel()
-        picker.title = "选择桌面小柴 Agent 工作目录"
+        picker.title = "选择哈妮丝 Agent 工作目录"
         picker.message = "Agent 只能读取和操作这个目录；写入和命令仍会逐次请求确认。"
         picker.prompt = "选择目录"
         picker.canChooseDirectories = true
@@ -946,10 +988,20 @@ final class PetController: NSObject {
         picker.canCreateDirectories = true
         guard picker.runModal() == .OK, let url = picker.url else { return nil }
         do {
+            let previousWorkspace = agentWorkspaceStore.workspaceURL()?.standardizedFileURL
+            let workspaceChanged = previousWorkspace != url.standardizedFileURL
             try agentWorkspaceStore.save(url)
             agentManager.shutdown()
             releaseSecurityScopedWorkspace()
             activateSecurityScopedWorkspace(url)
+            if workspaceChanged {
+                fileAnalysisStore.endActiveSession()
+                activeFileAnalysisSession = nil
+            }
+            try? fileAnalysisStore.cleanupExpiredSessions(in: url)
+            if !workspaceChanged {
+                activeFileAnalysisSession = fileAnalysisStore.activeSession(in: url)
+            }
             resetAgentSession()
             showSpeech("Agent 工作目录已设为：\(url.lastPathComponent)", duration: 7)
             return url
@@ -1002,7 +1054,7 @@ final class PetController: NSObject {
     }
 
     private var currentAgentWorkspace: URL? {
-        activeFileAnalysisSession?.workspaceURL ?? agentWorkspaceStore.workspaceURL()
+        agentWorkspaceStore.workspaceURL()
     }
 
     private var agentSessionID: String {

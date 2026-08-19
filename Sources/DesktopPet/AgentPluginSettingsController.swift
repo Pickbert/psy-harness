@@ -23,7 +23,7 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
         skillSummaryLabel = NSTextField(labelWithString: "")
         super.init()
 
-        window.title = "桌面小柴 · 插件与技能"
+        window.title = "哈妮丝 · 插件与技能"
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()

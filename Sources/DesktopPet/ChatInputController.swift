@@ -9,7 +9,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
     private let panel: ChatInputPanel
     private let inputField = NSTextField()
     private let hintLabel = NSTextField(labelWithString: "")
-    private var submittedText: String?
+    private var completion: ((String?) -> Void)?
 
     override init() {
         panel = ChatInputPanel(
@@ -22,24 +22,29 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
         configurePanel()
     }
 
-    func prompt(on screen: NSScreen?, attachments: [String] = []) -> String? {
+    var isVisible: Bool { panel.isVisible }
+
+    @discardableResult
+    func prompt(
+        on screen: NSScreen?,
+        attachments: [String] = [],
+        completion: @escaping (String?) -> Void
+    ) -> Bool {
         if panel.isVisible {
             NSApp.activate(ignoringOtherApps: true)
             panel.makeKeyAndOrderFront(nil)
             panel.makeFirstResponder(inputField)
-            return nil
+            return false
         }
 
-        submittedText = nil
+        self.completion = completion
         inputField.stringValue = ""
         updateContext(attachments: attachments)
         position(on: screen ?? NSScreen.main ?? NSScreen.screens.first)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(inputField)
-        let response = NSApp.runModal(for: panel)
-        panel.orderOut(nil)
-        return response == .OK ? submittedText : nil
+        return true
     }
 
     private func configurePanel() {
@@ -51,8 +56,8 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .utilityWindow
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.title = "和桌面小柴聊聊"
-        panel.setAccessibilityTitle("和桌面小柴聊聊")
+        panel.title = "和哈妮丝聊聊"
+        panel.setAccessibilityTitle("和哈妮丝聊聊")
 
         let background = NSVisualEffectView()
         background.translatesAutoresizingMaskIntoConstraints = false
@@ -83,7 +88,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
         inputField.maximumNumberOfLines = 1
         inputField.lineBreakMode = .byTruncatingTail
         inputField.placeholderAttributedString = NSAttributedString(
-            string: "想问桌面小柴什么？",
+            string: "想问哈妮丝什么？",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 25, weight: .regular),
                 .foregroundColor: NSColor.white.withAlphaComponent(0.38)
@@ -100,7 +105,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.image = Self.chatIcon()
         iconView.imageScaling = .scaleProportionallyUpOrDown
-        iconView.setAccessibilityLabel("桌面小柴")
+        iconView.setAccessibilityLabel("哈妮丝")
 
         guard let contentView = panel.contentView else { return }
         contentView.addSubview(background)
@@ -169,13 +174,23 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
             NSSound.beep()
             return
         }
-        submittedText = value
-        NSApp.stopModal(withCode: .OK)
+        finish(with: value)
     }
 
     private func cancel() {
-        submittedText = nil
-        NSApp.stopModal(withCode: .cancel)
+        finish(with: nil)
+    }
+
+    func cancelPrompt() {
+        guard panel.isVisible || completion != nil else { return }
+        finish(with: nil)
+    }
+
+    private func finish(with value: String?) {
+        let completion = self.completion
+        self.completion = nil
+        panel.orderOut(nil)
+        completion?(value)
     }
 
     func control(
@@ -204,6 +219,6 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
            let image = NSImage(contentsOf: url) {
             return image
         }
-        return NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "桌面小柴")
+        return NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "哈妮丝")
     }
 }

@@ -66,7 +66,7 @@ enum AgentRuntimeError: LocalizedError {
         switch self {
         case .unsupportedPlatform: return "Agent 仅支持 Apple Silicon、macOS 14 或更新版本。"
         case .runtimeMissing: return "没有找到已打包的 DeepSeek Harness Agent。"
-        case .configurationMissing: return "没有找到桌面小柴 Agent 配置。"
+        case .configurationMissing: return "没有找到哈妮丝 Agent 配置。"
         case .notReady: return "DeepSeek Harness Agent 尚未就绪。"
         case .busy: return "Agent 正在处理上一项任务。"
         case let .processExited(code): return "DeepSeek Harness Agent 已退出（状态码 \(code)）。"
@@ -561,7 +561,7 @@ final class AgentProcessManager {
             let params = notification.params
             let status = params["status"] as? String
             if status == "running" {
-                emitActivity("小柴正在处理任务…")
+                emitActivity("哈妮丝正在处理任务…")
             } else if status == "idle" {
                 let text = finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? streamedText.trimmingCharacters(in: .whitespacesAndNewlines)

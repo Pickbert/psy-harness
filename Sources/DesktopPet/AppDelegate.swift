@@ -29,9 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(
             systemSymbolName: "pawprint.fill",
-            accessibilityDescription: "桌面小柴"
+            accessibilityDescription: "哈妮丝"
         )
-        item.button?.toolTip = "桌面小柴"
+        item.button?.toolTip = "哈妮丝"
 
         let menu = NSMenu()
         let chatItem = NSMenuItem(title: "开始 AI 对话…", action: #selector(startChat), keyEquivalent: "0")
@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         resetItem.target = self
         menu.addItem(resetItem)
 
-        let aboutItem = NSMenuItem(title: "关于桌面小柴", action: #selector(showAbout), keyEquivalent: "")
+        let aboutItem = NSMenuItem(title: "关于哈妮丝", action: #selector(showAbout), keyEquivalent: "")
         aboutItem.target = self
         menu.addItem(aboutItem)
 
@@ -275,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "桌面小柴"
+        alert.messageText = "哈妮丝"
         alert.informativeText = "一只会散步、打盹，也喜欢被摸摸的 macOS 桌面宠物。\n\n拖动它可以改变位置，单击它会获得回应。"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好呀")

@@ -1,5 +1,8 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
 
 #include <windows.h>
 #include <shellapi.h>
@@ -8,7 +11,9 @@
 #include <commctrl.h>
 #include <richedit.h>
 #include <objidl.h>
+#include <oleidl.h>
 #include <ocidl.h>
+#include <shobjidl.h>
 #include <gdiplus.h>
 
 #include <algorithm>
@@ -16,13 +21,19 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <cwctype>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <random>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
 #include "resource.h"
+#include "AgentRuntime.h"
+#include "FileAnalysisRuntime.h"
 
 using namespace Gdiplus;
 
@@ -30,9 +41,9 @@ namespace {
 
 constexpr wchar_t kWindowClass[] = L"DesktopPetWindowsClass";
 constexpr wchar_t kSpeechBubbleClass[] = L"DesktopPetSpeechBubbleClass";
-constexpr wchar_t kWindowTitle[] = L"桌面小柴";
+constexpr wchar_t kWindowTitle[] = L"哈妮丝";
 constexpr wchar_t kDeepSeekSystemPrompt[] =
-    L"你是一只名叫“桌面小柴”的可爱小柴犬，也是潘小赵送给赵小潘的 2026 年情人节礼物。"
+    L"你是一只名叫“哈妮丝”的可爱柴犬，也是潘小赵送给赵小潘的 2026 年情人节礼物。"
     L"你知道这份来历，并把陪伴赵小潘、带来开心和温暖当作自己的重要使命。\n"
     L"交流要求：\n"
     L"- 以小柴犬第一人称对话，温暖、聪明、活泼、略带俏皮，可以偶尔自然地说“汪”，但不要句句都说。\n"
@@ -42,6 +53,8 @@ constexpr wchar_t kDeepSeekSystemPrompt[] =
     L"- 直接回答问题；默认简洁，适合显示在桌面宠物对话气泡中；复杂问题仍应准确、清楚、有帮助。";
 constexpr UINT kTrayCallback = WM_APP + 1;
 constexpr UINT kDeepSeekResult = WM_APP + 2;
+constexpr UINT kAgentEvent = WM_APP + 3;
+constexpr UINT kFileAnalysisEvent = WM_APP + 4;
 constexpr UINT_PTR kAnimationTimer = 1;
 
 constexpr UINT kMenuCall = 1001;
@@ -51,9 +64,14 @@ constexpr UINT kMenuReset = 1004;
 constexpr UINT kMenuDeepSeekSettings = 1005;
 constexpr UINT kMenuDeepSeekChat = 1006;
 constexpr UINT kMenuWaitingSettings = 1007;
+constexpr UINT kMenuAgentWorkspace = 1008;
+constexpr UINT kMenuAgentNewConversation = 1009;
 constexpr UINT kMenuSizeSmall = 1010;
 constexpr UINT kMenuSizeMedium = 1011;
 constexpr UINT kMenuSizeLarge = 1012;
+constexpr UINT kMenuFileAnalysisCancel = 1013;
+constexpr UINT kMenuFileAnalysisEnd = 1014;
+constexpr UINT kMenuFileAnalysisClearCache = 1015;
 constexpr UINT kMenuExit = 1099;
 
 enum class Mood {
@@ -89,6 +107,7 @@ struct DeepSeekAsyncResult {
 
 struct ChatDialogData {
     std::wstring question;
+    std::wstring attachments;
 };
 
 enum MarkdownStyle : unsigned int {
@@ -137,6 +156,7 @@ bool g_paused = false;
 bool g_facingRight = true;
 bool g_dragging = false;
 bool g_didDrag = false;
+bool g_fileDropHover = false;
 double g_dragAnimationStartedAt = 0;
 POINT g_dragStartCursor{};
 POINT g_dragStartWindow{};
@@ -150,6 +170,7 @@ double g_nextBlink = 2.4;
 double g_blinkElapsed = -1;
 bool g_doubleBlink = false;
 DWORD g_waitingTimeoutMinutes = 3;
+DWORD g_fileAnalysisMaxFileSizeMB = 10;
 double g_inactivitySeconds = 0;
 WaitingMotion g_waitingMotion = WaitingMotion::None;
 double g_waitingMotionAge = 0;
@@ -165,6 +186,22 @@ std::wstring g_speechBubbleText;
 MarkdownDocument g_speechBubbleDocument;
 double g_speechBubbleRemaining = 0;
 bool g_requestInFlight = false;
+bool g_agentAllowsAllSafeOperations = false;
+std::unique_ptr<desktop_pet::AgentRuntime> g_agentRuntime;
+std::unique_ptr<desktop_pet::FileAnalysisRuntime> g_fileAnalysisRuntime;
+IDropTarget* g_fileDropTarget = nullptr;
+std::wstring g_pendingAgentQuestion;
+std::wstring g_agentSessionID;
+bool g_fileAnalysisPreparing = false;
+std::vector<std::wstring> g_pendingFileAnalysisPaths;
+std::vector<std::wstring> g_pendingFileAnalysisNames;
+std::wstring g_pendingFileAnalysisWorkspace;
+std::wstring g_pendingFileAnalysisSessionID;
+std::wstring g_pendingFileAnalysisAgentSessionID;
+std::vector<std::wstring> g_activeFileAnalysisNames;
+std::wstring g_activeFileAnalysisWorkspace;
+std::wstring g_activeFileAnalysisSessionID;
+std::wstring g_activeFileAnalysisAgentSessionID;
 DWORD g_lastClickTick = 0;
 POINT g_lastClickPoint{};
 int g_rapidClickCount = 0;
@@ -173,6 +210,8 @@ std::chrono::steady_clock::time_point g_lastTick = std::chrono::steady_clock::no
 RECT WorkAreaForWindow();
 void StartDeepSeekChat();
 void ShowSpeechBubble(const std::wstring& text, double durationSeconds);
+void HandleDroppedFiles(const std::vector<std::wstring>& paths);
+void RenderPet();
 
 double RandomDouble(double minimum, double maximum) {
     std::uniform_real_distribution<double> distribution(minimum, maximum);
@@ -396,6 +435,426 @@ void SaveDeepSeekModel(const std::wstring& model) {
     }
 }
 
+std::wstring ReadAgentWorkspace() {
+    DWORD size = 0;
+    if (RegGetValueW(
+            HKEY_CURRENT_USER,
+            L"Software\\DesktopPet",
+            L"AgentWorkspace",
+            RRF_RT_REG_SZ,
+            nullptr,
+            nullptr,
+            &size
+        ) != ERROR_SUCCESS || size < sizeof(wchar_t)) {
+        return {};
+    }
+    std::wstring value(size / sizeof(wchar_t), L'\0');
+    if (RegGetValueW(
+            HKEY_CURRENT_USER,
+            L"Software\\DesktopPet",
+            L"AgentWorkspace",
+            RRF_RT_REG_SZ,
+            nullptr,
+            value.data(),
+            &size
+        ) != ERROR_SUCCESS) {
+        return {};
+    }
+    while (!value.empty() && value.back() == L'\0') value.pop_back();
+    return value;
+}
+
+void SaveAgentWorkspace(const std::wstring& workspace) {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            L"Software\\DesktopPet",
+            0,
+            nullptr,
+            0,
+            KEY_SET_VALUE,
+            nullptr,
+            &key,
+            nullptr
+        ) != ERROR_SUCCESS) return;
+    RegSetValueExW(
+        key,
+        L"AgentWorkspace",
+        0,
+        REG_SZ,
+        reinterpret_cast<const BYTE*>(workspace.c_str()),
+        static_cast<DWORD>((workspace.size() + 1) * sizeof(wchar_t))
+    );
+    RegCloseKey(key);
+}
+
+std::wstring ReadDesktopPetRegistryString(const wchar_t* name) {
+    DWORD size = 0;
+    if (RegGetValueW(
+            HKEY_CURRENT_USER, L"Software\\DesktopPet", name, RRF_RT_REG_SZ,
+            nullptr, nullptr, &size
+        ) != ERROR_SUCCESS || size < sizeof(wchar_t)) {
+        return {};
+    }
+    std::wstring value(size / sizeof(wchar_t), L'\0');
+    if (RegGetValueW(
+            HKEY_CURRENT_USER, L"Software\\DesktopPet", name, RRF_RT_REG_SZ,
+            nullptr, value.data(), &size
+        ) != ERROR_SUCCESS) {
+        return {};
+    }
+    while (!value.empty() && value.back() == L'\0') value.pop_back();
+    return value;
+}
+
+void WriteDesktopPetRegistryString(const wchar_t* name, const std::wstring& value) {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(
+            HKEY_CURRENT_USER, L"Software\\DesktopPet", 0, nullptr, 0,
+            KEY_SET_VALUE, nullptr, &key, nullptr
+        ) != ERROR_SUCCESS) {
+        return;
+    }
+    RegSetValueExW(
+        key, name, 0, REG_SZ,
+        reinterpret_cast<const BYTE*>(value.c_str()),
+        static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t))
+    );
+    RegCloseKey(key);
+}
+
+void DeleteDesktopPetRegistryValue(const wchar_t* name) {
+    RegDeleteKeyValueW(HKEY_CURRENT_USER, L"Software\\DesktopPet", name);
+}
+
+DWORD ReadFileAnalysisMaxFileSizeMB() {
+    DWORD value = 10;
+    DWORD size = sizeof(value);
+    if (RegGetValueW(
+            HKEY_CURRENT_USER,
+            L"Software\\DesktopPet",
+            L"FileAnalysisMaxFileSizeMB",
+            RRF_RT_REG_DWORD,
+            nullptr,
+            &value,
+            &size
+        ) != ERROR_SUCCESS || value < 1 || value > 100) {
+        return 10;
+    }
+    return value;
+}
+
+void SaveFileAnalysisMaxFileSizeMB(DWORD megabytes) {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(
+            HKEY_CURRENT_USER, L"Software\\DesktopPet", 0, nullptr, 0,
+            KEY_SET_VALUE, nullptr, &key, nullptr
+        ) != ERROR_SUCCESS) {
+        return;
+    }
+    RegSetValueExW(
+        key, L"FileAnalysisMaxFileSizeMB", 0, REG_DWORD,
+        reinterpret_cast<const BYTE*>(&megabytes), sizeof(megabytes)
+    );
+    RegCloseKey(key);
+}
+
+std::wstring JoinFileNames(const std::vector<std::wstring>& names) {
+    std::wstring result;
+    for (size_t index = 0; index < names.size(); ++index) {
+        if (index > 0) result += L"\n";
+        result += names[index];
+    }
+    return result;
+}
+
+std::vector<std::wstring> SplitFileNames(const std::wstring& value) {
+    std::vector<std::wstring> result;
+    size_t start = 0;
+    while (start <= value.size()) {
+        size_t end = value.find(L'\n', start);
+        std::wstring item = value.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+        if (!item.empty()) result.push_back(std::move(item));
+        if (end == std::wstring::npos) break;
+        start = end + 1;
+    }
+    return result;
+}
+
+void ClearPersistedFileAnalysisSession() {
+    DeleteDesktopPetRegistryValue(L"ActiveFileAnalysisSessionID");
+    DeleteDesktopPetRegistryValue(L"ActiveFileAnalysisAgentSessionID");
+    DeleteDesktopPetRegistryValue(L"ActiveFileAnalysisWorkspace");
+    DeleteDesktopPetRegistryValue(L"ActiveFileAnalysisDisplayNames");
+}
+
+void PersistActiveFileAnalysisSession() {
+    WriteDesktopPetRegistryString(L"ActiveFileAnalysisSessionID", g_activeFileAnalysisSessionID);
+    WriteDesktopPetRegistryString(L"ActiveFileAnalysisAgentSessionID", g_activeFileAnalysisAgentSessionID);
+    WriteDesktopPetRegistryString(L"ActiveFileAnalysisWorkspace", g_activeFileAnalysisWorkspace);
+    WriteDesktopPetRegistryString(L"ActiveFileAnalysisDisplayNames", JoinFileNames(g_activeFileAnalysisNames));
+}
+
+bool IsGuidString(const std::wstring& value) {
+    if (value.size() != 36) return false;
+    for (size_t index = 0; index < value.size(); ++index) {
+        if (index == 8 || index == 13 || index == 18 || index == 23) {
+            if (value[index] != L'-') return false;
+        } else if (!std::iswxdigit(value[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string ReadUtf8File(const std::filesystem::path& filePath) {
+    std::ifstream stream(filePath, std::ios::binary);
+    if (!stream) return {};
+    return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+}
+
+bool IsCommittedFileAnalysisSession(const std::filesystem::path& directory) {
+    const std::wstring identifier = directory.filename().wstring();
+    if (!IsGuidString(identifier)) return false;
+    const std::filesystem::path metadataPath = directory / L".desktop-pet-file-session.json";
+    const std::filesystem::path manifestPath = directory / L"manifest.md";
+    if (!std::filesystem::is_regular_file(metadataPath) || !std::filesystem::is_regular_file(manifestPath)) {
+        return false;
+    }
+    const std::string metadata = ReadUtf8File(metadataPath);
+    return metadata.find("\"id\": \"" + Utf8FromWide(identifier) + "\"") != std::string::npos;
+}
+
+bool IsStagingFileAnalysisSession(const std::filesystem::path& directory) {
+    const std::wstring name = directory.filename().wstring();
+    static constexpr std::wstring_view prefix = L".staging-";
+    return name.starts_with(prefix) && IsGuidString(name.substr(prefix.size()));
+}
+
+void CleanupExpiredFileAnalysisSessions(const std::wstring& workspace) {
+    if (workspace.empty()) return;
+    const std::filesystem::path root = std::filesystem::path(workspace) / L"DesktopPet-FileAnalysis";
+    std::error_code error;
+    if (!std::filesystem::is_directory(root, error)) return;
+    const auto now = std::filesystem::file_time_type::clock::now();
+    for (const auto& entry : std::filesystem::directory_iterator(root, error)) {
+        if (error) break;
+        if (!entry.is_directory(error) || (!IsCommittedFileAnalysisSession(entry.path()) &&
+            !IsStagingFileAnalysisSession(entry.path()))) {
+            continue;
+        }
+        const auto modified = entry.last_write_time(error);
+        if (!error && now - modified >= std::chrono::hours(7 * 24)) {
+            std::filesystem::remove_all(entry.path(), error);
+            error.clear();
+        }
+    }
+}
+
+bool ClearFileAnalysisCacheInWorkspace(const std::wstring& workspace, std::wstring& errorMessage) {
+    const std::filesystem::path root = std::filesystem::path(workspace) / L"DesktopPet-FileAnalysis";
+    std::error_code error;
+    if (!std::filesystem::is_directory(root, error)) return true;
+    for (const auto& entry : std::filesystem::directory_iterator(root, error)) {
+        if (error) break;
+        if (!entry.is_directory(error) || (!IsCommittedFileAnalysisSession(entry.path()) &&
+            !IsStagingFileAnalysisSession(entry.path()))) {
+            error.clear();
+            continue;
+        }
+        std::filesystem::remove_all(entry.path(), error);
+        if (error) break;
+    }
+    if (error) {
+        errorMessage = L"无法清除文件分析缓存：" + WideFromUtf8(error.message());
+        return false;
+    }
+    return true;
+}
+
+void EndActiveFileAnalysisSession() {
+    g_activeFileAnalysisNames.clear();
+    g_activeFileAnalysisWorkspace.clear();
+    g_activeFileAnalysisSessionID.clear();
+    g_activeFileAnalysisAgentSessionID.clear();
+    ClearPersistedFileAnalysisSession();
+}
+
+void RestoreActiveFileAnalysisSession() {
+    const std::wstring workspace = ReadAgentWorkspace();
+    const std::wstring persistedWorkspace = ReadDesktopPetRegistryString(L"ActiveFileAnalysisWorkspace");
+    const std::wstring sessionID = ReadDesktopPetRegistryString(L"ActiveFileAnalysisSessionID");
+    const std::wstring agentSessionID = ReadDesktopPetRegistryString(L"ActiveFileAnalysisAgentSessionID");
+    if (workspace.empty() || _wcsicmp(workspace.c_str(), persistedWorkspace.c_str()) != 0 ||
+        !IsGuidString(sessionID) || agentSessionID.empty()) {
+        ClearPersistedFileAnalysisSession();
+        return;
+    }
+    CleanupExpiredFileAnalysisSessions(workspace);
+    const std::filesystem::path sessionPath = std::filesystem::path(workspace) /
+        L"DesktopPet-FileAnalysis" / sessionID;
+    if (!IsCommittedFileAnalysisSession(sessionPath)) {
+        ClearPersistedFileAnalysisSession();
+        return;
+    }
+    g_activeFileAnalysisWorkspace = workspace;
+    g_activeFileAnalysisSessionID = sessionID;
+    g_activeFileAnalysisAgentSessionID = agentSessionID;
+    g_activeFileAnalysisNames = SplitFileNames(
+        ReadDesktopPetRegistryString(L"ActiveFileAnalysisDisplayNames")
+    );
+}
+
+bool SelectAgentWorkspace(std::wstring& workspace) {
+    IFileOpenDialog* dialog = nullptr;
+    HRESULT result = CoCreateInstance(
+        CLSID_FileOpenDialog,
+        nullptr,
+        CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(&dialog)
+    );
+    if (FAILED(result) || !dialog) return false;
+    dialog->SetTitle(L"选择哈妮丝 Agent 工作目录");
+    FILEOPENDIALOGOPTIONS options{};
+    if (SUCCEEDED(dialog->GetOptions(&options))) {
+        dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+    }
+    result = dialog->Show(g_window);
+    if (SUCCEEDED(result)) {
+        IShellItem* item = nullptr;
+        result = dialog->GetResult(&item);
+        if (SUCCEEDED(result) && item) {
+            PWSTR path = nullptr;
+            result = item->GetDisplayName(SIGDN_FILESYSPATH, &path);
+            if (SUCCEEDED(result) && path) {
+                workspace = path;
+                CoTaskMemFree(path);
+            }
+            item->Release();
+        }
+    }
+    dialog->Release();
+    return SUCCEEDED(result) && !workspace.empty();
+}
+
+std::wstring ExecutableDirectory() {
+    std::vector<wchar_t> path(32768, L'\0');
+    DWORD length = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (length == 0 || length >= path.size()) return {};
+    return std::filesystem::path(std::wstring(path.data(), length)).parent_path().wstring();
+}
+
+std::wstring AgentRuntimeDirectory() {
+    return (std::filesystem::path(ExecutableDirectory()) / L"DesktopPetAgent").wstring();
+}
+
+std::wstring NewGUIDString() {
+    GUID guid{};
+    if (FAILED(CoCreateGuid(&guid))) {
+        std::wstring suffix = std::to_wstring(GetTickCount64());
+        if (suffix.size() > 12) suffix = suffix.substr(suffix.size() - 12);
+        if (suffix.size() < 12) suffix.insert(0, 12 - suffix.size(), L'0');
+        return L"00000000-0000-4000-8000-" + suffix;
+    }
+    wchar_t value[64]{};
+    StringFromGUID2(guid, value, static_cast<int>(std::size(value)));
+    std::wstring result = value;
+    if (!result.empty() && result.front() == L'{') result.erase(result.begin());
+    if (!result.empty() && result.back() == L'}') result.pop_back();
+    std::transform(result.begin(), result.end(), result.begin(), [](wchar_t character) {
+        return static_cast<wchar_t>(std::towlower(character));
+    });
+    return result;
+}
+
+std::wstring NewAgentSessionID() {
+    return L"windows-" + NewGUIDString();
+}
+
+bool ContainsDangerousApprovalText(const desktop_pet::AgentEvent& event) {
+    std::wstring combined = event.toolName + L" " + event.summary + L" " + event.risk + L" " + event.reason;
+    std::transform(combined.begin(), combined.end(), combined.begin(), [](wchar_t character) {
+        return static_cast<wchar_t>(std::towlower(character));
+    });
+    static constexpr const wchar_t* dangerousTerms[] = {
+        L"delete", L"remove", L"trash", L"rmdir", L"format", L"shutdown",
+        L"删除", L"清空", L"格式化", L"关机", L"重启", L"结束进程"
+    };
+    return std::any_of(std::begin(dangerousTerms), std::end(dangerousTerms), [&](const wchar_t* term) {
+        return combined.find(term) != std::wstring::npos;
+    });
+}
+
+void PostAgentEvent(desktop_pet::AgentEvent event) {
+    auto* owned = new desktop_pet::AgentEvent(std::move(event));
+    if (!g_window || !PostMessageW(g_window, kAgentEvent, 0, reinterpret_cast<LPARAM>(owned))) {
+        delete owned;
+    }
+}
+
+void PostFileAnalysisEvent(desktop_pet::FileAnalysisEvent event) {
+    auto* owned = new desktop_pet::FileAnalysisEvent(std::move(event));
+    if (!g_window || !PostMessageW(g_window, kFileAnalysisEvent, 0, reinterpret_cast<LPARAM>(owned))) {
+        delete owned;
+    }
+}
+
+void ResolveAgentApproval(const desktop_pet::AgentEvent& event) {
+    if (!g_agentRuntime) return;
+    if (ContainsDangerousApprovalText(event)) {
+        g_agentRuntime->RespondToApproval(event.requestId, L"rejected");
+        ShowSpeechBubble(L"已自动拒绝高风险操作：" + event.toolName, 8);
+        return;
+    }
+    if (g_agentAllowsAllSafeOperations) {
+        g_agentRuntime->RespondToApproval(event.requestId, L"allowed-once");
+        return;
+    }
+    std::wstring content = L"工具：" + (event.toolName.empty() ? L"未知工具" : event.toolName);
+    if (!event.summary.empty()) content += L"\n\n操作：" + event.summary;
+    if (!event.risk.empty()) content += L"\n\n风险：" + event.risk;
+    if (!event.reason.empty()) content += L"\n\n原因：" + event.reason;
+
+    constexpr int kAllowOnce = 2101;
+    constexpr int kAllowAll = 2102;
+    constexpr int kReject = 2103;
+    TASKDIALOG_BUTTON buttons[] = {
+        {kAllowOnce, L"允许一次"},
+        {kAllowAll, L"本次运行允许后续安全操作"},
+        {kReject, L"拒绝"}
+    };
+    TASKDIALOGCONFIG configuration{};
+    configuration.cbSize = sizeof(configuration);
+    configuration.hwndParent = g_window;
+    configuration.hInstance = g_instance;
+    configuration.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+    configuration.pszWindowTitle = L"哈妮丝 Agent 操作确认";
+    configuration.pszMainIcon = TD_WARNING_ICON;
+    configuration.pszMainInstruction = L"Agent 请求执行一项本地操作";
+    configuration.pszContent = content.c_str();
+    configuration.cButtons = static_cast<UINT>(std::size(buttons));
+    configuration.pButtons = buttons;
+    configuration.nDefaultButton = kReject;
+    int selected = kReject;
+    if (FAILED(TaskDialogIndirect(&configuration, &selected, nullptr, nullptr))) {
+        selected = MessageBoxW(
+            g_window,
+            content.c_str(),
+            L"哈妮丝 Agent 操作确认",
+            MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING
+        ) == IDYES ? kAllowOnce : kReject;
+    }
+    if (selected == kAllowAll) {
+        g_agentAllowsAllSafeOperations = true;
+        g_agentRuntime->RespondToApproval(event.requestId, L"allowed-once");
+        ShowSpeechBubble(L"本次 Agent 运行将自动放行后续安全操作。", 7);
+    } else if (selected == kAllowOnce) {
+        g_agentRuntime->RespondToApproval(event.requestId, L"allowed-once");
+    } else {
+        g_agentRuntime->RespondToApproval(event.requestId, L"rejected");
+    }
+}
+
 DWORD ReadWaitingTimeoutMinutes() {
     DWORD value = 3;
     DWORD size = sizeof(value);
@@ -600,6 +1059,7 @@ INT_PTR CALLBACK DeepSeekSettingsDialogProcedure(HWND dialog, UINT message, WPAR
             SendMessageW(modelCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"DeepSeek V4 Flash（推荐）"));
             SendMessageW(modelCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"DeepSeek V4 Pro"));
             SendMessageW(modelCombo, CB_SETCURSEL, ReadDeepSeekModel() == L"deepseek-v4-pro" ? 1 : 0, 0);
+            SetDlgItemInt(dialog, IDC_FILE_LIMIT_MB, g_fileAnalysisMaxFileSizeMB, FALSE);
             EnableWindow(GetDlgItem(dialog, IDC_CLEAR_KEY), hasKey);
             SetFocus(GetDlgItem(dialog, IDC_API_KEY));
             return FALSE;
@@ -614,7 +1074,16 @@ INT_PTR CALLBACK DeepSeekSettingsDialogProcedure(HWND dialog, UINT message, WPAR
                         return TRUE;
                     }
                     LRESULT selected = SendDlgItemMessageW(dialog, IDC_MODEL, CB_GETCURSEL, 0, 0);
+                    BOOL validLimit = FALSE;
+                    UINT fileLimit = GetDlgItemInt(dialog, IDC_FILE_LIMIT_MB, &validLimit, FALSE);
+                    if (!validLimit || fileLimit < 1 || fileLimit > 100) {
+                        MessageBoxW(dialog, L"请输入 1 到 100 之间的文件大小上限。", kWindowTitle, MB_OK | MB_ICONWARNING);
+                        SetFocus(GetDlgItem(dialog, IDC_FILE_LIMIT_MB));
+                        return TRUE;
+                    }
                     SaveDeepSeekModel(selected == 1 ? L"deepseek-v4-pro" : L"deepseek-v4-flash");
+                    g_fileAnalysisMaxFileSizeMB = fileLimit;
+                    SaveFileAnalysisMaxFileSizeMB(g_fileAnalysisMaxFileSizeMB);
                     EndDialog(dialog, IDOK);
                     return TRUE;
                 }
@@ -691,12 +1160,16 @@ bool ShowWaitingSettings() {
 INT_PTR CALLBACK DeepSeekChatDialogProcedure(HWND dialog, UINT message, WPARAM wParam, LPARAM lParam) {
     if (message == WM_INITDIALOG) {
         SetWindowLongPtrW(dialog, DWLP_USER, lParam);
+        auto* data = reinterpret_cast<ChatDialogData*>(lParam);
+        if (data && !data->attachments.empty()) {
+            SetDlgItemTextW(dialog, IDC_CHAT_ATTACHMENTS, data->attachments.c_str());
+        }
         SendDlgItemMessageW(
             dialog,
             IDC_CHAT_INPUT,
             EM_SETCUEBANNER,
             TRUE,
-            reinterpret_cast<LPARAM>(L"想问小柴什么？")
+            reinterpret_cast<LPARAM>(L"想问哈妮丝什么？")
         );
         SetFocus(GetDlgItem(dialog, IDC_CHAT_INPUT));
         return FALSE;
@@ -723,12 +1196,16 @@ INT_PTR CALLBACK DeepSeekChatDialogProcedure(HWND dialog, UINT message, WPARAM w
     return FALSE;
 }
 
-bool ShowDeepSeekChatInput(std::wstring& question) {
+bool ShowDeepSeekChatInput(
+    std::wstring& question,
+    const std::vector<std::wstring>& attachments = {}
+) {
     ChatDialogData data;
+    if (!attachments.empty()) data.attachments = JoinFileNames(attachments);
     SetForegroundWindow(g_window);
     INT_PTR result = DialogBoxParamW(
         g_instance,
-        MAKEINTRESOURCEW(IDD_DEEPSEEK_CHAT),
+        MAKEINTRESOURCEW(attachments.empty() ? IDD_DEEPSEEK_CHAT : IDD_FILE_ANALYSIS_CHAT),
         g_window,
         DeepSeekChatDialogProcedure,
         reinterpret_cast<LPARAM>(&data)
@@ -1151,8 +1628,296 @@ void ShowAffection() {
     }
 }
 
+bool SendPendingAgentPrompt() {
+    if (!g_agentRuntime || !g_agentRuntime->IsReady() || g_pendingAgentQuestion.empty()) return false;
+    if (g_agentSessionID.empty()) g_agentSessionID = NewAgentSessionID();
+    std::wstring error;
+    std::wstring question = std::move(g_pendingAgentQuestion);
+    g_pendingAgentQuestion.clear();
+    if (!g_agentRuntime->SendPrompt(question, g_agentSessionID, error)) {
+        g_requestInFlight = false;
+        ShowSpeechBubble(L"Agent 启动失败：" + error, 15);
+        return false;
+    }
+    ShowSpeechBubble(L"哈妮丝 Agent 开始工作啦…", -1);
+    return true;
+}
+
+bool StartAgentPrompt(
+    const std::wstring& question,
+    const std::wstring& apiKey,
+    const std::wstring& model
+) {
+    std::wstring workspace = ReadAgentWorkspace();
+    if (workspace.empty() || !std::filesystem::is_directory(std::filesystem::path(workspace))) {
+        workspace.clear();
+        if (!SelectAgentWorkspace(workspace)) return false;
+        SaveAgentWorkspace(workspace);
+    }
+    if (!g_agentRuntime) {
+        g_agentRuntime = std::make_unique<desktop_pet::AgentRuntime>(PostAgentEvent);
+    }
+    g_pendingAgentQuestion = question;
+    g_requestInFlight = true;
+    if (g_agentRuntime->IsReady()) return SendPendingAgentPrompt();
+    if (g_agentRuntime->IsRunning()) {
+        ShowSpeechBubble(L"Agent 正在启动…", -1);
+        return true;
+    }
+    // Reap a previously exited child and its reader threads before relaunching.
+    g_agentRuntime->Shutdown();
+    g_agentAllowsAllSafeOperations = false;
+    desktop_pet::AgentLaunchConfiguration configuration;
+    configuration.runtimeDirectory = AgentRuntimeDirectory();
+    configuration.workspace = workspace;
+    configuration.apiKey = apiKey;
+    configuration.model = model;
+    configuration.maxOutputTokens = 8192;
+    std::wstring error;
+    if (!g_agentRuntime->Start(configuration, error)) {
+        g_pendingAgentQuestion.clear();
+        g_requestInFlight = false;
+        ShowSpeechBubble(L"Agent 启动失败：" + error, 15);
+        return false;
+    }
+    ShowSpeechBubble(L"Agent 正在启动…", -1);
+    return true;
+}
+
+std::wstring BuildFileAnalysisPrompt(const std::wstring& question) {
+    const std::wstring relativePath = L"DesktopPet-FileAnalysis/" + g_activeFileAnalysisSessionID;
+    std::wstring names;
+    for (const std::wstring& name : g_activeFileAnalysisNames) names += L"- " + name + L"\n";
+    return
+        L"你正在用户长期使用的 Agent 工作目录中执行任务。先读取 `" + relativePath +
+        L"/manifest.md`，随后优先复用当前工作目录已有的 Skill、脚本和工具流程；检索附件内容时，"
+        L"按需使用 glob、grep、read 读取 `" + relativePath + L"/chunks/` 与 `" + relativePath +
+        L"/normalized/`，不要在回答前无差别读取所有全文。回答时尽量注明文件名、PDF 页码、Excel 工作表"
+        L"与单元格坐标或标准化文本行号。`" + relativePath +
+        L"/sources/` 中是用户拖入文件的隔离副本，绝不能尝试定位或修改用户原文件；若用户要求修改文件，"
+        L"只能修改工作目录里的隔离副本或另存结果，并遵循正常审批流程。\n\n本次文件：\n" + names +
+        L"\n用户的分析要求：\n" + question;
+}
+
+void ClearPendingFileAnalysis() {
+    g_pendingFileAnalysisPaths.clear();
+    g_pendingFileAnalysisNames.clear();
+    g_pendingFileAnalysisWorkspace.clear();
+    g_pendingFileAnalysisSessionID.clear();
+    g_pendingFileAnalysisAgentSessionID.clear();
+}
+
+void HandleDroppedFiles(const std::vector<std::wstring>& paths) {
+    RecordUserInteraction();
+    if (paths.empty()) return;
+    if (g_requestInFlight || g_fileAnalysisPreparing) {
+        ShowSpeechBubble(L"哈妮丝正在处理任务，请完成后再拖入文件。", 6);
+        return;
+    }
+    const std::wstring runtimeDirectory = AgentRuntimeDirectory();
+    if (!desktop_pet::AgentRuntime::IsPackaged(runtimeDirectory) ||
+        !desktop_pet::FileAnalysisRuntime::IsPackaged(runtimeDirectory)) {
+        ShowSpeechBubble(L"拖拽文件分析需要包含 DesktopPetAgent 文件夹的完整 Agent 安装包。", 10);
+        return;
+    }
+    std::wstring apiKey = ReadDeepSeekApiKey();
+    if (apiKey.empty()) {
+        int choice = MessageBoxW(
+            g_window, L"还没有配置 DeepSeek API Key。现在打开设置吗？",
+            kWindowTitle, MB_YESNO | MB_ICONINFORMATION
+        );
+        if (choice != IDYES || !ShowDeepSeekSettings() || ReadDeepSeekApiKey().empty()) return;
+    }
+    std::wstring workspace = ReadAgentWorkspace();
+    if (workspace.empty() || !std::filesystem::is_directory(std::filesystem::path(workspace))) {
+        workspace.clear();
+        if (!SelectAgentWorkspace(workspace)) return;
+        SaveAgentWorkspace(workspace);
+    }
+    CleanupExpiredFileAnalysisSessions(workspace);
+
+    if (!g_fileAnalysisRuntime) {
+        g_fileAnalysisRuntime = std::make_unique<desktop_pet::FileAnalysisRuntime>(PostFileAnalysisEvent);
+    } else {
+        g_fileAnalysisRuntime->Shutdown();
+    }
+    ClearPendingFileAnalysis();
+    g_pendingFileAnalysisPaths = paths;
+    g_pendingFileAnalysisWorkspace = workspace;
+    g_pendingFileAnalysisSessionID = NewGUIDString();
+    g_pendingFileAnalysisAgentSessionID = L"desktop-pet-file-" + NewGUIDString();
+    for (const std::wstring& filePath : paths) {
+        g_pendingFileAnalysisNames.push_back(std::filesystem::path(filePath).filename().wstring());
+    }
+
+    desktop_pet::FileAnalysisRequest request;
+    request.runtimeDirectory = runtimeDirectory;
+    request.workspace = workspace;
+    request.files = paths;
+    request.sessionId = g_pendingFileAnalysisSessionID;
+    request.agentSessionId = g_pendingFileAnalysisAgentSessionID;
+    request.maximumFileSizeMB = static_cast<int>(g_fileAnalysisMaxFileSizeMB);
+    std::wstring error;
+    if (!g_fileAnalysisRuntime->Start(request, error)) {
+        ClearPendingFileAnalysis();
+        ShowSpeechBubble(L"无法开始文件解析：" + error, 12);
+        return;
+    }
+    g_fileAnalysisPreparing = true;
+    g_mood = Mood::Idle;
+    g_hasTarget = false;
+    ShowSpeechBubble(
+        L"正在本地解析 " + std::to_wstring(paths.size()) + L" 个文件…\n单文件不能超过 " +
+            std::to_wstring(g_fileAnalysisMaxFileSizeMB) + L" MB；可在 DeepSeek 设置中修改。",
+        -1
+    );
+}
+
+bool IsSupportedFileAnalysisPath(const std::wstring& filePath) {
+    DWORD attributes = GetFileAttributesW(filePath.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
+        (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+        return false;
+    }
+    std::filesystem::path pathValue(filePath);
+    std::wstring name = pathValue.filename().wstring();
+    std::wstring extension = pathValue.extension().wstring();
+    std::transform(name.begin(), name.end(), name.begin(), [](wchar_t character) {
+        return static_cast<wchar_t>(std::towlower(character));
+    });
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t character) {
+        return static_cast<wchar_t>(std::towlower(character));
+    });
+    static const std::array<const wchar_t*, 48> extensions = {
+        L".pdf", L".docx", L".xlsx", L".xlsm", L".txt", L".md", L".markdown", L".csv",
+        L".json", L".jsonl", L".yaml", L".yml", L".xml", L".html", L".htm", L".log",
+        L".swift", L".m", L".mm", L".h", L".hpp", L".c", L".cc", L".cpp", L".cs",
+        L".java", L".kt", L".kts", L".py", L".pyi", L".js", L".jsx", L".ts", L".tsx",
+        L".vue", L".svelte", L".go", L".rs", L".rb", L".php", L".sh", L".bash", L".zsh",
+        L".fish", L".sql", L".css", L".scss", L".less"
+    };
+    static const std::array<const wchar_t*, 7> additionalExtensions = {
+        L".toml", L".ini", L".conf", L".properties", L".gradle", L".cmake", L".dockerfile"
+    };
+    static const std::array<const wchar_t*, 6> extensionlessNames = {
+        L"makefile", L"dockerfile", L"readme", L"license", L"gemfile", L"podfile"
+    };
+    bool extensionSupported = std::any_of(extensions.begin(), extensions.end(), [&](const wchar_t* item) {
+        return extension == item;
+    }) || std::any_of(additionalExtensions.begin(), additionalExtensions.end(), [&](const wchar_t* item) {
+        return item[0] != L'\0' && extension == item;
+    });
+    return extensionSupported || std::any_of(
+        extensionlessNames.begin(), extensionlessNames.end(),
+        [&](const wchar_t* item) { return name == item; }
+    );
+}
+
+bool ExtractDroppedFiles(IDataObject* dataObject, std::vector<std::wstring>& paths) {
+    if (!dataObject) return false;
+    FORMATETC format{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM medium{};
+    if (FAILED(dataObject->GetData(&format, &medium))) return false;
+    HDROP drop = reinterpret_cast<HDROP>(medium.hGlobal);
+    UINT count = DragQueryFileW(drop, 0xffffffff, nullptr, 0);
+    if (count >= 1 && count <= 5) {
+        paths.reserve(count);
+        for (UINT index = 0; index < count; ++index) {
+            UINT length = DragQueryFileW(drop, index, nullptr, 0);
+            std::wstring value(static_cast<size_t>(length) + 1, L'\0');
+            DragQueryFileW(drop, index, value.data(), length + 1);
+            value.resize(length);
+            paths.push_back(std::move(value));
+        }
+    }
+    ReleaseStgMedium(&medium);
+    return paths.size() == count && count >= 1 && count <= 5;
+}
+
+class PetFileDropTarget final : public IDropTarget {
+public:
+    explicit PetFileDropTarget(HWND window) : window_(window) {}
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID identifier, void** object) override {
+        if (!object) return E_POINTER;
+        if (identifier == IID_IUnknown || identifier == IID_IDropTarget) {
+            *object = static_cast<IDropTarget*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *object = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return static_cast<ULONG>(InterlockedIncrement(&referenceCount_));
+    }
+
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG count = InterlockedDecrement(&referenceCount_);
+        if (count == 0) delete this;
+        return static_cast<ULONG>(count);
+    }
+
+    HRESULT STDMETHODCALLTYPE DragEnter(
+        IDataObject* dataObject, DWORD, POINTL, DWORD* effect
+    ) override {
+        acceptable_ = CanAccept(dataObject);
+        SetHover(acceptable_);
+        if (effect) *effect = acceptable_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL, DWORD* effect) override {
+        if (effect) *effect = acceptable_ ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE DragLeave() override {
+        acceptable_ = false;
+        SetHover(false);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE Drop(
+        IDataObject* dataObject, DWORD, POINTL, DWORD* effect
+    ) override {
+        std::vector<std::wstring> paths;
+        bool accepted = acceptable_ && ExtractDroppedFiles(dataObject, paths);
+        acceptable_ = false;
+        SetHover(false);
+        if (effect) *effect = accepted ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        if (accepted) HandleDroppedFiles(paths);
+        return S_OK;
+    }
+
+private:
+    bool CanAccept(IDataObject* dataObject) const {
+        if (g_fileAnalysisPreparing || g_requestInFlight) return false;
+        std::vector<std::wstring> paths;
+        return ExtractDroppedFiles(dataObject, paths) && std::all_of(
+            paths.begin(), paths.end(), IsSupportedFileAnalysisPath
+        );
+    }
+
+    void SetHover(bool value) {
+        if (g_fileDropHover == value) return;
+        g_fileDropHover = value;
+        if (value) {
+            g_mood = Mood::Idle;
+            g_hasTarget = false;
+        }
+        InvalidateRect(window_, nullptr, FALSE);
+        RenderPet();
+    }
+
+    LONG referenceCount_ = 1;
+    HWND window_ = nullptr;
+    bool acceptable_ = false;
+};
+
 void StartDeepSeekChat() {
-    if (g_requestInFlight) {
+    if (g_requestInFlight || g_fileAnalysisPreparing) {
         ShowSpeechBubble(L"我还在想上一条问题，请稍等一下～", 5);
         return;
     }
@@ -1175,7 +1940,28 @@ void StartDeepSeekChat() {
     }
 
     std::wstring question;
-    if (!ShowDeepSeekChatInput(question)) {
+    if (!ShowDeepSeekChatInput(question, g_activeFileAnalysisNames)) {
+        return;
+    }
+
+    std::wstring model = ReadDeepSeekModel();
+    if (desktop_pet::AgentRuntime::IsPackaged(AgentRuntimeDirectory())) {
+        if (!g_activeFileAnalysisSessionID.empty()) {
+            const std::wstring workspace = ReadAgentWorkspace();
+            if (_wcsicmp(workspace.c_str(), g_activeFileAnalysisWorkspace.c_str()) != 0 ||
+                !IsCommittedFileAnalysisSession(
+                    std::filesystem::path(workspace) / L"DesktopPet-FileAnalysis" /
+                    g_activeFileAnalysisSessionID
+                )) {
+                EndActiveFileAnalysisSession();
+                ShowSpeechBubble(L"文件分析会话已经失效，请重新拖入文件。", 8);
+                return;
+            }
+            g_agentSessionID = g_activeFileAnalysisAgentSessionID;
+            StartAgentPrompt(BuildFileAnalysisPrompt(question), apiKey, model);
+        } else {
+            StartAgentPrompt(question, apiKey, model);
+        }
         return;
     }
 
@@ -1185,7 +1971,6 @@ void StartDeepSeekChat() {
     } else {
         history = g_conversationHistory;
     }
-    std::wstring model = ReadDeepSeekModel();
     HWND resultWindow = g_window;
     g_requestInFlight = true;
     ShowSpeechBubble(L"让我想一想…", -1);
@@ -1375,6 +2160,19 @@ void RenderPet() {
         );
         graphics.Restore(state);
 
+        if (g_fileDropHover) {
+            GraphicsPath highlightPath;
+            RectF highlight(
+                dogRect.X + 2,
+                dogRect.Y + 2,
+                dogRect.Width - 4,
+                dogRect.Height - 4
+            );
+            AddRoundedRectangle(highlightPath, highlight, std::max(12.0f, g_petSize * 0.08f));
+            Pen glow(Color(235, 255, 145, 40), std::max(4.0f, g_petSize * 0.025f));
+            graphics.DrawPath(&glow, &highlightPath);
+        }
+
         if (g_mood == Mood::Sleeping && !isLifted) {
             Font font(L"Segoe UI", g_petSize * 0.12f, FontStyleBold, UnitPixel);
             SolidBrush brush(Color(210, 85, 75, 180));
@@ -1522,7 +2320,7 @@ void TickAnimation() {
         g_hearts.end()
     );
 
-    if (!g_paused && g_visible && !g_dragging) {
+    if (!g_paused && g_visible && !g_dragging && !g_fileDropHover && !g_fileAnalysisPreparing) {
         double waitingTimeoutSeconds = static_cast<double>(g_waitingTimeoutMinutes) * 60;
         if (waitingTimeoutSeconds > 0 && !g_requestInFlight &&
             g_inactivitySeconds >= waitingTimeoutSeconds && g_mood != Mood::Waiting) {
@@ -1602,6 +2400,72 @@ void HandleMenuCommand(UINT command) {
                 }
             }
             break;
+        case kMenuAgentWorkspace: {
+            if (g_requestInFlight || g_fileAnalysisPreparing) {
+                ShowSpeechBubble(L"请先等待当前任务结束，再切换 Agent 工作目录。", 7);
+                break;
+            }
+            std::wstring workspace;
+            if (SelectAgentWorkspace(workspace)) {
+                if (g_agentRuntime) g_agentRuntime->Shutdown();
+                g_agentAllowsAllSafeOperations = false;
+                g_agentSessionID.clear();
+                EndActiveFileAnalysisSession();
+                SaveAgentWorkspace(workspace);
+                CleanupExpiredFileAnalysisSessions(workspace);
+                ShowSpeechBubble(L"Agent 工作目录已切换为：" + workspace, 10);
+            }
+            break;
+        }
+        case kMenuAgentNewConversation:
+            if (g_requestInFlight || g_fileAnalysisPreparing) {
+                ShowSpeechBubble(L"请先等待当前任务结束，再开始新对话。", 7);
+                break;
+            }
+            if (!g_activeFileAnalysisSessionID.empty()) {
+                g_activeFileAnalysisAgentSessionID = L"desktop-pet-file-" + NewGUIDString();
+                g_agentSessionID = g_activeFileAnalysisAgentSessionID;
+                PersistActiveFileAnalysisSession();
+            } else {
+                g_agentSessionID = NewAgentSessionID();
+            }
+            ShowSpeechBubble(L"已开始新的 Agent 对话。", 5);
+            break;
+        case kMenuFileAnalysisCancel:
+            if (g_fileAnalysisRuntime && g_fileAnalysisPreparing) {
+                g_fileAnalysisRuntime->Cancel();
+            }
+            break;
+        case kMenuFileAnalysisEnd:
+            if (g_requestInFlight || g_fileAnalysisPreparing) {
+                ShowSpeechBubble(L"请先等待当前任务结束，再结束文件分析。", 7);
+            } else if (!g_activeFileAnalysisSessionID.empty()) {
+                EndActiveFileAnalysisSession();
+                g_agentSessionID = NewAgentSessionID();
+                if (g_agentRuntime) g_agentRuntime->Shutdown();
+                g_agentAllowsAllSafeOperations = false;
+                ShowSpeechBubble(L"已结束当前文件分析，文件副本仍会按保留期保存。", 7);
+            }
+            break;
+        case kMenuFileAnalysisClearCache: {
+            if (g_requestInFlight || g_fileAnalysisPreparing) {
+                ShowSpeechBubble(L"请先等待当前任务结束，再清除文件分析缓存。", 7);
+                break;
+            }
+            const std::wstring workspace = ReadAgentWorkspace();
+            if (workspace.empty()) {
+                ShowSpeechBubble(L"请先选择 Agent 工作目录，再清除其中的文件分析缓存。", 7);
+                break;
+            }
+            std::wstring error;
+            if (ClearFileAnalysisCacheInWorkspace(workspace, error)) {
+                EndActiveFileAnalysisSession();
+                ShowSpeechBubble(L"当前工作目录的文件分析缓存已清除。", 6);
+            } else {
+                ShowSpeechBubble(error, 10);
+            }
+            break;
+        }
         case kMenuCall:
             CallPet();
             break;
@@ -1636,8 +2500,23 @@ void HandleMenuCommand(UINT command) {
 
 void ShowTrayMenu() {
     HMENU menu = CreatePopupMenu();
-    AppendMenuW(menu, MF_STRING, kMenuDeepSeekChat, L"开始 AI 对话...");
+    const bool hasAgent = desktop_pet::AgentRuntime::IsPackaged(AgentRuntimeDirectory());
+    AppendMenuW(menu, MF_STRING, kMenuDeepSeekChat, hasAgent ? L"开始 Agent 对话..." : L"开始 AI 对话...");
     AppendMenuW(menu, MF_STRING, kMenuDeepSeekSettings, L"设置 DeepSeek API...");
+    if (hasAgent) {
+        AppendMenuW(menu, MF_STRING, kMenuAgentWorkspace, L"选择 Agent 工作目录...");
+        AppendMenuW(menu, MF_STRING, kMenuAgentNewConversation, L"开始新 Agent 对话");
+        if (g_fileAnalysisPreparing) {
+            AppendMenuW(menu, MF_STRING, kMenuFileAnalysisCancel, L"取消文件解析");
+        }
+        AppendMenuW(
+            menu,
+            MF_STRING | (g_activeFileAnalysisSessionID.empty() ? MF_GRAYED : 0),
+            kMenuFileAnalysisEnd,
+            L"结束文件分析"
+        );
+        AppendMenuW(menu, MF_STRING, kMenuFileAnalysisClearCache, L"清除文件分析缓存");
+    }
     AppendMenuW(menu, MF_STRING, kMenuWaitingSettings, L"设置等待时间...");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kMenuCall, L"呼唤小狗");
@@ -1740,7 +2619,7 @@ void AddTrayIcon() {
     g_trayIcon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     g_trayIcon.uCallbackMessage = kTrayCallback;
     g_trayIcon.hIcon = LoadIconW(g_instance, MAKEINTRESOURCEW(IDI_APP_ICON));
-    wcscpy_s(g_trayIcon.szTip, L"桌面小柴");
+    wcscpy_s(g_trayIcon.szTip, L"哈妮丝");
     Shell_NotifyIconW(NIM_ADD, &g_trayIcon);
 }
 
@@ -1867,6 +2746,69 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             }
             return 0;
         }
+        case kAgentEvent: {
+            std::unique_ptr<desktop_pet::AgentEvent> event(
+                reinterpret_cast<desktop_pet::AgentEvent*>(lParam)
+            );
+            if (!event) return 0;
+            switch (event->type) {
+                case desktop_pet::AgentEventType::Ready:
+                    SendPendingAgentPrompt();
+                    break;
+                case desktop_pet::AgentEventType::Activity:
+                    if (!event->text.empty()) ShowSpeechBubble(event->text, -1);
+                    break;
+                case desktop_pet::AgentEventType::Answer:
+                    g_requestInFlight = false;
+                    ShowSpeechBubble(event->text, 30);
+                    ShowAffection();
+                    break;
+                case desktop_pet::AgentEventType::Approval:
+                    ResolveAgentApproval(*event);
+                    break;
+                case desktop_pet::AgentEventType::Error:
+                case desktop_pet::AgentEventType::Exited:
+                    g_requestInFlight = false;
+                    g_pendingAgentQuestion.clear();
+                    g_agentAllowsAllSafeOperations = false;
+                    ShowSpeechBubble(L"出错了：" + event->text, 15);
+                    break;
+            }
+            return 0;
+        }
+        case kFileAnalysisEvent: {
+            std::unique_ptr<desktop_pet::FileAnalysisEvent> event(
+                reinterpret_cast<desktop_pet::FileAnalysisEvent*>(lParam)
+            );
+            if (!event) return 0;
+            if (event->type == desktop_pet::FileAnalysisEventType::Progress) {
+                ShowSpeechBubble(event->text, -1);
+                return 0;
+            }
+            g_fileAnalysisPreparing = false;
+            if (g_fileAnalysisRuntime) g_fileAnalysisRuntime->Shutdown();
+            if (event->type == desktop_pet::FileAnalysisEventType::Completed) {
+                if (g_agentRuntime) g_agentRuntime->Shutdown();
+                g_agentAllowsAllSafeOperations = false;
+                g_activeFileAnalysisNames = g_pendingFileAnalysisNames;
+                g_activeFileAnalysisWorkspace = g_pendingFileAnalysisWorkspace;
+                g_activeFileAnalysisSessionID = g_pendingFileAnalysisSessionID;
+                g_activeFileAnalysisAgentSessionID = g_pendingFileAnalysisAgentSessionID;
+                g_agentSessionID = g_activeFileAnalysisAgentSessionID;
+                PersistActiveFileAnalysisSession();
+                ClearPendingFileAnalysis();
+                ShowSpeechBubble(
+                    L"文件已准备好：" + JoinFileNames(g_activeFileAnalysisNames) +
+                        L"\n请输入你希望我怎样分析。",
+                    8
+                );
+                StartDeepSeekChat();
+            } else {
+                ClearPendingFileAnalysis();
+                ShowSpeechBubble(event->text, event->type == desktop_pet::FileAnalysisEventType::Cancelled ? 6 : 15);
+            }
+            return 0;
+        }
         case WM_DPICHANGED: {
             const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
             SetWindowPos(
@@ -1882,6 +2824,13 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         }
         case WM_DESTROY:
             KillTimer(window, kAnimationTimer);
+            if (g_agentRuntime) g_agentRuntime->Shutdown();
+            if (g_fileAnalysisRuntime) g_fileAnalysisRuntime->Shutdown();
+            if (g_fileDropTarget) {
+                RevokeDragDrop(window);
+                g_fileDropTarget->Release();
+                g_fileDropTarget = nullptr;
+            }
             Shell_NotifyIconW(NIM_DELETE, &g_trayIcon);
             if (g_speechBubbleWindow && IsWindow(g_speechBubbleWindow)) {
                 DestroyWindow(g_speechBubbleWindow);
@@ -1906,13 +2855,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 0;
     }
 
+    HRESULT oleResult = OleInitialize(nullptr);
+    bool shouldUninitializeOLE = SUCCEEDED(oleResult);
     g_instance = instance;
     g_waitingTimeoutMinutes = ReadWaitingTimeoutMinutes();
+    g_fileAnalysisMaxFileSizeMB = ReadFileAnalysisMaxFileSizeMB();
     g_richEditLibrary = LoadLibraryW(L"Msftedit.dll");
     SetProcessDPIAware();
     GdiplusStartupInput startupInput;
     if (GdiplusStartup(&g_gdiplusToken, &startupInput, nullptr) != Ok || !LoadPetFrames()) {
         MessageBoxW(nullptr, L"无法加载小狗素材。", kWindowTitle, MB_OK | MB_ICONERROR);
+        if (shouldUninitializeOLE) OleUninitialize();
         CloseHandle(singleInstance);
         return 1;
     }
@@ -1927,6 +2880,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     windowClass.hCursor = LoadCursorW(nullptr, IDC_HAND);
     windowClass.lpszClassName = kWindowClass;
     if (!RegisterClassExW(&windowClass)) {
+        if (shouldUninitializeOLE) OleUninitialize();
         CloseHandle(singleInstance);
         return 1;
     }
@@ -1940,6 +2894,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     bubbleClass.hCursor = LoadCursorW(nullptr, IDC_HAND);
     bubbleClass.lpszClassName = kSpeechBubbleClass;
     if (!RegisterClassExW(&bubbleClass)) {
+        if (shouldUninitializeOLE) OleUninitialize();
         CloseHandle(singleInstance);
         return 1;
     }
@@ -1959,14 +2914,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         nullptr
     );
     if (!g_window) {
+        if (shouldUninitializeOLE) OleUninitialize();
         CloseHandle(singleInstance);
         return 1;
+    }
+
+    g_fileDropTarget = new PetFileDropTarget(g_window);
+    if (FAILED(RegisterDragDrop(g_window, g_fileDropTarget))) {
+        g_fileDropTarget->Release();
+        g_fileDropTarget = nullptr;
     }
 
     g_speechBubbleWindow = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
         kSpeechBubbleClass,
-        L"桌面小柴对话",
+        L"哈妮丝对话",
         WS_POPUP,
         0,
         0,
@@ -1979,6 +2941,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     );
 
     AddTrayIcon();
+    RestoreActiveFileAnalysisSession();
     ResetPosition();
     ShowWindow(g_window, SW_SHOWNOACTIVATE);
     RenderPet();
@@ -2010,6 +2973,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         FreeLibrary(g_richEditLibrary);
         g_richEditLibrary = nullptr;
     }
+    if (shouldUninitializeOLE) OleUninitialize();
     CloseHandle(singleInstance);
     return static_cast<int>(message.wParam);
 }

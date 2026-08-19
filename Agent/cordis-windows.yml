@@ -1,0 +1,136 @@
+# DesktopPet supervised Windows agent composition. stdout is reserved for JSON-RPC.
+
+- id: sdk-jsonrpc-server
+  name: '@deepseek-ai/dsh-sdk-jsonrpc-server'
+  config:
+    maxTokensAsSuccess: false
+    desktopPetPolicy: true
+
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    thinking: disabled
+
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+
+- id: sandbox-policy
+  name: '@deepseek-ai/dsh-sandbox-policy'
+  config:
+    mode: workspace-write
+    workspaceRoot: !!js process.env.DSH_CWD ?? process.cwd()
+
+# On Windows this resolves commands through the ACL/restricted-token sandbox.
+# A missing sandbox runner is a hard failure; commands never fall back to an
+# unrestricted process.
+- id: pwsh-sandbox
+  name: '@deepseek-ai/dsh-pwsh-sandbox'
+  config:
+    timeoutMs: 60000
+
+- id: approval
+  name: '@deepseek-ai/dsh-user-approval'
+  config:
+    policy: ask
+
+- id: permission
+  name: '@deepseek-ai/dsh-permission-presets'
+  config:
+    presets:
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+    defaultPreset: workspace-write
+
+- id: shell-env
+  name: '@deepseek-ai/dsh-shell-env'
+
+- id: agent-spine
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    persona: !!js process.env.DSH_SYSTEM_PROMPT ?? 'You are a supervised local assistant.'
+    workspaceContext:
+      maxBytes: 65536
+    skills:
+      enabled: !!js process.env.DSH_PLUGIN_SKILLS === '1'
+      filesystem:
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js process.env.DSH_SKILL_DIR
+    # The Windows composition mounts the PowerShell tool below instead.
+    toolBash: false
+    toolJobs: false
+    goals: !!js "process.env.DSH_PLUGIN_GOALS === '1' ? {} : false"
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  config:
+    enableRunInBackground: false
+
+- id: fs-sandbox
+  name: '@deepseek-ai/dsh-fs-sandbox'
+  config:
+    cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+- id: fs-observation-policy
+  name: '@deepseek-ai/dsh-fs-observation-policy'
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  disabled: !!js process.env.DSH_PLUGIN_TODO !== '1'
+  config:
+    allowParallelInProgress: false
+
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  disabled: !!js process.env.DSH_PLUGIN_WEB_SEARCH !== '1'
+  config:
+    searchProvider: deepseek-official
+
+- id: web-search-deepseek
+  name: '@deepseek-ai/dsh-web-search-deepseek'
+  disabled: !!js process.env.DSH_PLUGIN_WEB_SEARCH !== '1'
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+
+- id: tool-call-timeout-policy
+  name: '@deepseek-ai/dsh-tool-call-timeout-policy'
+  disabled: !!js process.env.DSH_PLUGIN_WEB_SEARCH !== '1'
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  disabled: !!js process.env.DSH_PLUGIN_WEB_SEARCH !== '1'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000
+
+- id: sessions
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js process.env.DSH_SESSION_ROOT ?? './.sessions'
+    compression: none
+
+- id: session-checkpoints
+  name: '@deepseek-ai/dsh-session-checkpoint-policy'
+
+- id: token-meter
+  name: '@deepseek-ai/dsh-token-meter'
+
+- id: compaction-basic
+  name: '@deepseek-ai/dsh-compaction-basic'
+  config:
+    thresholdRatio: 0.8
+    retainRatio: 0.16
+    maxTokens: 8192
+    compactionRetries: 1

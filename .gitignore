@@ -42,6 +42,7 @@ xcuserdata/
 .build/agent-runtime/
 ThirdParty/deepseek-harness/node_modules/
 ThirdParty/deepseek-harness/dist-exe/
+Agent/windows-file-analysis/node_modules/
 
 # Packaged release archives
 *.zip

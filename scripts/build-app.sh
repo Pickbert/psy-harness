@@ -56,6 +56,9 @@ install -m 644 "$project_dir/Agent/SYSTEM_PROMPT.md" "$resources_dir/DesktopPetA
 install -m 644 "$project_dir/Agent/HARNESS_VERSION" "$resources_dir/DeepSeekHarness.version"
 install -m 644 "$project_dir/Agent/THIRD_PARTY_NOTICES.md" "$resources_dir/THIRD_PARTY_NOTICES.md"
 install -m 644 "$project_dir/ThirdParty/deepseek-harness/LICENSE" "$resources_dir/DeepSeekHarness-LICENSE.txt"
+install -m 644 "$project_dir/.build/checkouts/CoreXLSX/LICENSE.md" "$resources_dir/CoreXLSX-LICENSE.txt"
+install -m 644 "$project_dir/.build/checkouts/XMLCoder/LICENSE" "$resources_dir/XMLCoder-LICENSE.txt"
+install -m 644 "$project_dir/.build/checkouts/ZIPFoundation/LICENSE" "$resources_dir/ZIPFoundation-LICENSE.txt"
 
 if [[ "$(uname -m)" == "arm64" && -x "$agent_runtime" && -x "$agent_runtime_helper" ]]; then
     install -m 755 "$agent_runtime" "$helpers_dir/DesktopPetAgent"
@@ -71,14 +74,14 @@ fi
 
 plutil -create xml1 "$contents_dir/Info.plist"
 plutil -replace CFBundleDevelopmentRegion -string "zh_CN" "$contents_dir/Info.plist"
-plutil -replace CFBundleDisplayName -string "桌面小柴" "$contents_dir/Info.plist"
+plutil -replace CFBundleDisplayName -string "哈妮丝" "$contents_dir/Info.plist"
 plutil -replace CFBundleExecutable -string "DesktopPet" "$contents_dir/Info.plist"
 plutil -replace CFBundleIdentifier -string "com.local.desktoppet" "$contents_dir/Info.plist"
 plutil -replace CFBundleInfoDictionaryVersion -string "6.0" "$contents_dir/Info.plist"
 plutil -replace CFBundleName -string "DesktopPet" "$contents_dir/Info.plist"
 plutil -replace CFBundlePackageType -string "APPL" "$contents_dir/Info.plist"
-plutil -replace CFBundleShortVersionString -string "0.5.0" "$contents_dir/Info.plist"
-plutil -replace CFBundleVersion -string "19" "$contents_dir/Info.plist"
+plutil -replace CFBundleShortVersionString -string "0.6.0" "$contents_dir/Info.plist"
+plutil -replace CFBundleVersion -string "21" "$contents_dir/Info.plist"
 plutil -replace LSMinimumSystemVersion -string "13.0" "$contents_dir/Info.plist"
 plutil -replace LSUIElement -bool true "$contents_dir/Info.plist"
 plutil -replace NSHighResolutionCapable -bool true "$contents_dir/Info.plist"

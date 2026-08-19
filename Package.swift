@@ -10,9 +10,15 @@ let package = Package(
     products: [
         .executable(name: "DesktopPet", targets: ["DesktopPet"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/CoreOffice/CoreXLSX.git", exact: "0.14.2")
+    ],
     targets: [
         .executableTarget(
             name: "DesktopPet",
+            dependencies: [
+                .product(name: "CoreXLSX", package: "CoreXLSX")
+            ],
             resources: [
                 .process("Resources")
             ]

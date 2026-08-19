@@ -18,7 +18,7 @@ IDR_SHIBA_LIFT_BLINK RCDATA "Sources/DesktopPet/Resources/shiba-lift-blink.png"
 IDI_APP_ICON ICON "windows/shiba-icon.ico"
 1 RT_MANIFEST "windows/app.manifest"
 
-IDD_DEEPSEEK_SETTINGS DIALOGEX 0, 0, 284, 126
+IDD_DEEPSEEK_SETTINGS DIALOGEX 0, 0, 284, 166
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "DeepSeek 设置"
 FONT 9, "Microsoft YaHei UI"
@@ -27,14 +27,30 @@ BEGIN
     EDITTEXT        IDC_API_KEY, 10, 25, 264, 16, ES_PASSWORD | ES_AUTOHSCROLL | WS_TABSTOP
     LTEXT           "模型", -1, 10, 51, 50, 12
     COMBOBOX        IDC_MODEL, 10, 65, 264, 70, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "清除密钥", IDC_CLEAR_KEY, 10, 101, 58, 15
-    DEFPUSHBUTTON   "保存", IDOK, 176, 101, 46, 15
-    PUSHBUTTON      "取消", IDCANCEL, 228, 101, 46, 15
+    LTEXT           "文件分析单文件上限（1–100 MB）", -1, 10, 92, 180, 12
+    EDITTEXT        IDC_FILE_LIMIT_MB, 196, 89, 78, 17, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
+    LTEXT           "每批最多 5 个文件，总量和解析结果分别不超过 100 MB。", -1, 10, 114, 264, 12
+    PUSHBUTTON      "清除密钥", IDC_CLEAR_KEY, 10, 141, 58, 15
+    DEFPUSHBUTTON   "保存", IDOK, 176, 141, 46, 15
+    PUSHBUTTON      "取消", IDCANCEL, 228, 141, 46, 15
+END
+
+IDD_FILE_ANALYSIS_CHAT DIALOGEX 0, 0, 334, 116
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "让哈妮丝分析文件"
+FONT 9, "Microsoft YaHei UI"
+BEGIN
+    LTEXT           "附件：", -1, 10, 10, 38, 12
+    LTEXT           "", IDC_CHAT_ATTACHMENTS, 48, 10, 276, 30, SS_LEFT
+    LTEXT           "输入总结、对比、提取数据或其他分析要求：", -1, 10, 46, 314, 12
+    EDITTEXT        IDC_CHAT_INPUT, 10, 62, 314, 17, ES_AUTOHSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "发送", IDOK, 230, 91, 44, 15
+    PUSHBUTTON      "取消", IDCANCEL, 280, 91, 44, 15
 END
 
 IDD_DEEPSEEK_CHAT DIALOGEX 0, 0, 304, 80
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "和桌面小柴聊聊"
+CAPTION "和哈妮丝聊聊"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
     LTEXT           "输入内容后按回车发送给 DeepSeek：", -1, 10, 10, 284, 12
@@ -48,7 +64,7 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "等待召唤设置"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
-    LTEXT           "连续无交互多少分钟后，让小柴蹲坐等待？", -1, 10, 10, 244, 12
+    LTEXT           "连续无交互多少分钟后，让哈妮丝蹲坐等待？", -1, 10, 10, 244, 12
     EDITTEXT        IDC_WAITING_MINUTES, 10, 27, 244, 17, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
     LTEXT           "填写 0 可关闭；允许范围 0–1440 分钟。", -1, 10, 49, 244, 12
     DEFPUSHBUTTON   "保存", IDOK, 158, 66, 46, 15
@@ -56,8 +72,8 @@ BEGIN
 END
 
 1 VERSIONINFO
- FILEVERSION 0,5,0,0
- PRODUCTVERSION 0,5,0,0
+ FILEVERSION 0,7,0,0
+ PRODUCTVERSION 0,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -73,12 +89,12 @@ BEGIN
         BLOCK "080404B0"
         BEGIN
             VALUE "CompanyName", "DesktopPet"
-            VALUE "FileDescription", "桌面小柴 - Windows 桌面宠物"
-            VALUE "FileVersion", "0.5.0"
+            VALUE "FileDescription", "哈妮丝 - Windows 桌面宠物"
+            VALUE "FileVersion", "0.7.0"
             VALUE "InternalName", "DesktopPet"
             VALUE "OriginalFilename", "DesktopPet-Windows-x64.exe"
-            VALUE "ProductName", "桌面小柴"
-            VALUE "ProductVersion", "0.5.0"
+            VALUE "ProductName", "哈妮丝"
+            VALUE "ProductVersion", "0.7.0"
         END
     END
     BLOCK "VarFileInfo"
