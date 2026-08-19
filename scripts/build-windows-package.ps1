@@ -39,6 +39,33 @@ function Assert-BinaryVersion {
         }
     }
 }
+function Compress-DirectoryWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceDirectory,
+        [Parameter(Mandatory = $true)][string]$DestinationPath,
+        [int]$MaximumAttempts = 5
+    )
+    for ($Attempt = 1; $Attempt -le $MaximumAttempts; $Attempt++) {
+        try {
+            Compress-Archive -Path (Join-Path $SourceDirectory "*") `
+                -DestinationPath $DestinationPath -CompressionLevel Optimal
+            return
+        }
+        catch {
+            # Compress-Archive may leave a partial file when antivirus or a
+            # just-stopped process briefly retains a handle inside the payload.
+            if (Test-Path -LiteralPath $DestinationPath -PathType Leaf) {
+                Remove-Item -LiteralPath $DestinationPath -Force
+            }
+            if ($Attempt -eq $MaximumAttempts) {
+                throw
+            }
+            $DelayMilliseconds = 500 * $Attempt
+            Write-Warning "Portable archive attempt $Attempt failed; retrying in $DelayMilliseconds ms. $($_.Exception.Message)"
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
 $ResourceDefinition = Get-Content -LiteralPath (Join-Path $ProjectDirectory "windows\resources.rc") -Raw
 if ($ResourceDefinition -notmatch ('VALUE "ProductVersion", "' + [regex]::Escape($AppVersion) + '"')) {
     throw "windows/resources.rc ProductVersion does not match windows/VERSION ($AppVersion)."
@@ -235,7 +262,7 @@ try {
         if (Test-Path -LiteralPath $PortableZip) {
             throw "Portable archive already exists: $PortableZip"
         }
-        Compress-Archive -Path (Join-Path $OutputDirectory "*") -DestinationPath $PortableZip -CompressionLevel Optimal
+        Compress-DirectoryWithRetry -SourceDirectory $OutputDirectory -DestinationPath $PortableZip
         $ReleaseFiles.Add($PortableZip)
     }
     if ($CreateInstaller) {

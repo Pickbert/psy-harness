@@ -100,16 +100,83 @@ let initialized = false
 let pluginSnapshotReceived = false
 let promptCompleted = false
 let settled = false
+let childClosed = false
+let childExitCode = null
+let shutdownRequested = false
+let shutdownCompleted = process.platform !== 'win32'
+
+function killChildProcessTree() {
+  if (child.pid === undefined) return
+  if (process.platform !== 'win32') {
+    child.kill()
+    return
+  }
+  const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  killer.on('error', () => child.kill())
+}
 
 function fail(message) {
   if (settled) return
   settled = true
   clearTimeout(timeout)
-  child.kill()
+  killChildProcessTree()
   mockServer.close()
   const detail = stderr.trim()
   process.stderr.write(`${message}${detail === '' ? '' : `\nAgent stderr:\n${detail}`}\n`)
   process.exitCode = 1
+}
+
+function finishWhenStopped() {
+  if (settled || !childClosed || !shutdownCompleted) return
+  if (!initialized) {
+    fail(`Packaged Agent exited before initialization (exit code ${String(childExitCode)}).`)
+    return
+  }
+  if (!pluginSnapshotReceived || !promptCompleted || mockRequestCount === 0 || !mockAuthorizationValid) {
+    fail('Packaged Agent did not complete the loopback prompt smoke test.')
+    return
+  }
+  if (!shutdownRequested && childExitCode !== 0) {
+    fail(`Packaged Agent exited after initialization with code ${String(childExitCode)}.`)
+    return
+  }
+  settled = true
+  clearTimeout(timeout)
+  mockServer.close()
+  process.stdout.write('Packaged Windows Agent prompt smoke test passed without a real API key.\n')
+}
+
+function stopChildProcessTree() {
+  if (shutdownRequested) return
+  shutdownRequested = true
+  if (process.platform !== 'win32') {
+    child.stdin.end()
+    return
+  }
+  if (child.pid === undefined) {
+    fail('Packaged Agent process has no PID for Windows process-tree cleanup.')
+    return
+  }
+  // Harness workers can outlive the JSON-RPC host after stdin closes. Waiting
+  // for taskkill /T prevents those workers from keeping packaged node.exe open.
+  const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  killer.on('error', error => {
+    fail(`Could not stop packaged Agent process tree: ${error.message}`)
+  })
+  killer.on('close', code => {
+    if (code !== 0) {
+      fail(`Could not stop packaged Agent process tree (taskkill exit code ${String(code)}).`)
+      return
+    }
+    shutdownCompleted = true
+    finishWhenStopped()
+  })
 }
 
 function handleLine(line) {
@@ -173,7 +240,7 @@ function handleLine(line) {
       frame.params?.sessionId === 'desktop-pet-build-smoke-session' &&
       frame.params?.status === 'idle') {
     promptCompleted = true
-    child.stdin.end()
+    stopChildProcessTree()
   }
 }
 
@@ -194,23 +261,9 @@ child.stderr.on('data', chunk => {
 })
 child.on('error', error => fail(`Could not start packaged Agent: ${error.message}`))
 child.on('close', code => {
-  if (settled) return
-  if (!initialized) {
-    fail(`Packaged Agent exited before initialization (exit code ${String(code)}).`)
-    return
-  }
-  if (!pluginSnapshotReceived || !promptCompleted || mockRequestCount === 0 || !mockAuthorizationValid) {
-    fail('Packaged Agent did not complete the loopback prompt smoke test.')
-    return
-  }
-  if (code !== 0) {
-    fail(`Packaged Agent exited after initialization with code ${String(code)}.`)
-    return
-  }
-  settled = true
-  clearTimeout(timeout)
-  mockServer.close()
-  process.stdout.write('Packaged Windows Agent prompt smoke test passed without a real API key.\n')
+  childClosed = true
+  childExitCode = code
+  finishWhenStopped()
 })
 
 const timeout = setTimeout(() => {
