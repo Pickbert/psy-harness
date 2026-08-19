@@ -3,6 +3,35 @@ import XCTest
 @testable import DesktopPet
 
 final class ChatInputControllerTests: XCTestCase {
+    func testCommandVPastesIntoTheChatField() throws {
+        _ = NSApplication.shared
+        let pasteboard = NSPasteboard.general
+        let savedItems = Self.snapshot(pasteboard)
+        defer { Self.restore(savedItems, to: pasteboard) }
+
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("从剪贴板粘贴", forType: .string))
+
+        let controller = ChatInputController()
+        XCTAssertTrue(controller.prompt(on: nil) { _ in })
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: 0,
+            windowNumber: controller.panelForTesting.windowNumber,
+            context: nil,
+            characters: "v",
+            charactersIgnoringModifiers: "v",
+            isARepeat: false,
+            keyCode: 9
+        ))
+
+        XCTAssertTrue(controller.panelForTesting.performKeyEquivalent(with: event))
+        XCTAssertEqual(controller.inputTextForTesting, "从剪贴板粘贴")
+        controller.cancelPrompt()
+    }
+
     func testPromptReturnsImmediatelyAndRejectsASecondPrompt() {
         _ = NSApplication.shared
         let controller = ChatInputController()
@@ -62,5 +91,27 @@ final class ChatInputControllerTests: XCTestCase {
                 isPreparingFileAnalysis: false
             )
         )
+    }
+
+    private typealias PasteboardSnapshot = [[NSPasteboard.PasteboardType: Data]]
+
+    private static func snapshot(_ pasteboard: NSPasteboard) -> PasteboardSnapshot {
+        pasteboard.pasteboardItems?.map { item in
+            Dictionary(uniqueKeysWithValues: item.types.compactMap { type in
+                item.data(forType: type).map { (type, $0) }
+            })
+        } ?? []
+    }
+
+    private static func restore(_ snapshot: PasteboardSnapshot, to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        let items = snapshot.map { values in
+            let item = NSPasteboardItem()
+            for (type, data) in values {
+                item.setData(data, forType: type)
+            }
+            return item
+        }
+        if !items.isEmpty { pasteboard.writeObjects(items) }
     }
 }

@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyHandler: EventHandlerRef?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.mainMenu = AppMainMenu.make()
         petController = PetController()
         configureStatusItem()
         registerDeepSeekHotKey()

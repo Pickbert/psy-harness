@@ -3,6 +3,24 @@ import AppKit
 private final class ChatInputPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let commandModifiers = event.modifierFlags.intersection([
+            .command,
+            .option,
+            .control,
+            .shift
+        ])
+        guard event.type == .keyDown,
+              commandModifiers == [.command],
+              event.charactersIgnoringModifiers?.lowercased() == "v"
+        else { return super.performKeyEquivalent(with: event) }
+
+        if firstResponder?.tryToPerform(#selector(NSText.paste(_:)), with: nil) == true {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 final class ChatInputController: NSObject, NSTextFieldDelegate {
@@ -27,6 +45,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
 
 #if DEBUG
     var panelForTesting: NSPanel { panel }
+    var inputTextForTesting: String { inputField.stringValue }
 #endif
 
     @discardableResult
