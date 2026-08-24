@@ -457,7 +457,7 @@ bool AgentRuntime::Start(
         return false;
     }
     if (persona.empty()) {
-        error = L"狗狗人设不能为空。";
+        error = L"猫咪人设不能为空。";
         return false;
     }
     const std::string systemPrompt = persona + "\n\n" + fixedRules;

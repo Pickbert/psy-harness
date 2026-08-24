@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(waitingItem)
         menu.addItem(.separator())
 
-        let callItem = NSMenuItem(title: "呼唤小狗", action: #selector(callPet), keyEquivalent: "")
+        let callItem = NSMenuItem(title: "呼唤小猫", action: #selector(callPet), keyEquivalent: "")
         callItem.target = self
         menu.addItem(callItem)
 
@@ -78,19 +78,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(pauseItem)
         self.pauseItem = pauseItem
 
-        let visibilityItem = NSMenuItem(title: "隐藏小狗", action: #selector(toggleVisibility), keyEquivalent: "")
+        let visibilityItem = NSMenuItem(title: "隐藏小猫", action: #selector(toggleVisibility), keyEquivalent: "")
         visibilityItem.target = self
         menu.addItem(visibilityItem)
         self.visibilityItem = visibilityItem
 
-        let sizeMenu = NSMenu(title: "小狗大小")
+        let sizeMenu = NSMenu(title: "小猫大小")
         for (title, size) in [("小", 150), ("中", 190), ("大", 240)] {
             let sizeItem = NSMenuItem(title: title, action: #selector(changeSize(_:)), keyEquivalent: "")
             sizeItem.target = self
             sizeItem.representedObject = size
             sizeMenu.addItem(sizeItem)
         }
-        let sizeRootItem = NSMenuItem(title: "小狗大小", action: nil, keyEquivalent: "")
+        let sizeRootItem = NSMenuItem(title: "小猫大小", action: nil, keyEquivalent: "")
         sizeRootItem.submenu = sizeMenu
         menu.addItem(sizeRootItem)
 
@@ -196,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let petController else { return }
         if !petController.isVisible {
             petController.show()
-            visibilityItem?.title = "隐藏小狗"
+            visibilityItem?.title = "隐藏小猫"
         }
         NSApp.activate(ignoringOtherApps: true)
         petController.startDeepSeekChat()
@@ -204,7 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func callPet() {
         petController?.callPet()
-        visibilityItem?.title = "隐藏小狗"
+        visibilityItem?.title = "隐藏小猫"
     }
 
     @objc private func startChat() {
@@ -257,10 +257,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let petController else { return }
         if petController.isVisible {
             petController.hide()
-            visibilityItem?.title = "显示小狗"
+            visibilityItem?.title = "显示小猫"
         } else {
             petController.show()
-            visibilityItem?.title = "隐藏小狗"
+            visibilityItem?.title = "隐藏小猫"
         }
     }
 

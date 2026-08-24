@@ -278,11 +278,11 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
     }
 
     private static func chatIcon() -> NSImage? {
-        if let url = Bundle.main.url(forResource: "shiba-chat-icon", withExtension: "png"),
+        if let url = Bundle.main.url(forResource: "cat-chat-icon", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             return image
         }
-        if let url = Bundle.module.url(forResource: "shiba-chat-icon", withExtension: "png"),
+        if let url = Bundle.module.url(forResource: "cat-chat-icon", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             return image
         }

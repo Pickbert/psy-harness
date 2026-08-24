@@ -430,7 +430,7 @@ final class PetController: NSObject {
         agentPanel.cancelApproval()
         agentManager.stopCurrentTask()
         isRequestInFlight = false
-        showSpeech("已经停下来了，汪。", duration: 5)
+        showSpeech("已经停下来了，喵。", duration: 5)
     }
 
     @objc func restartAgent() {
@@ -475,7 +475,7 @@ final class PetController: NSObject {
             .map(\.title)
             .joined(separator: "、")
         showSpeech(
-            "\(agentManager.statusText)\n工作目录：\(workspace)\n\(fileContext)\n审批模式：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n狗狗人设：\(personaStatus)\n已配置：\(configured.displaySummary)\nHarness 实际启用：\(actual.isEmpty ? "未运行或无可选插件" : actual)",
+            "\(agentManager.statusText)\n工作目录：\(workspace)\n\(fileContext)\n审批模式：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n猫咪人设：\(personaStatus)\n已配置：\(configured.displaySummary)\nHarness 实际启用：\(actual.isEmpty ? "未运行或无可选插件" : actual)",
             duration: 12
         )
     }
@@ -1149,17 +1149,17 @@ final class PetController: NSObject {
     }
 
     private static func loadPetFrames() -> PetFrames {
-        let idle = loadImage(named: "shiba") ?? fallbackImage()
-        let blink = loadImage(named: "shiba-blink-v2") ?? idle
-        let walking = (1...4).compactMap { loadImage(named: "shiba-walk-\($0)-v2") }
+        let idle = loadImage(named: "cat") ?? fallbackImage()
+        let blink = loadImage(named: "cat-blink") ?? idle
+        let walking = (1...4).compactMap { loadImage(named: "cat-walk-\($0)") }
         let lifted = [
-            loadImage(named: "shiba-lift-1"),
-            loadImage(named: "shiba-lift-blink")
+            loadImage(named: "cat-lift"),
+            loadImage(named: "cat-lift-blink")
         ].compactMap { $0 }
-        let waiting = loadImage(named: "shiba-waiting") ?? idle
-        let waitingBlink = loadImage(named: "shiba-waiting-blink") ?? waiting
-        let waitingEar = loadImage(named: "shiba-waiting-ear") ?? waiting
-        let waitingTail = loadImage(named: "shiba-waiting-tail") ?? waiting
+        let waiting = loadImage(named: "cat-waiting") ?? idle
+        let waitingBlink = loadImage(named: "cat-waiting-blink") ?? waiting
+        let waitingEar = loadImage(named: "cat-waiting-ear") ?? waiting
+        let waitingTail = loadImage(named: "cat-waiting-tail") ?? waiting
         return PetFrames(
             idle: idle,
             blink: blink,

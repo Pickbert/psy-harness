@@ -7,19 +7,19 @@
 
 LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 
-IDR_SHIBA RCDATA "Sources/DesktopPet/Resources/shiba.png"
-IDR_SHIBA_BLINK RCDATA "Sources/DesktopPet/Resources/shiba-blink-v2.png"
-IDR_SHIBA_WALK_1 RCDATA "Sources/DesktopPet/Resources/shiba-walk-1-v2.png"
-IDR_SHIBA_WALK_2 RCDATA "Sources/DesktopPet/Resources/shiba-walk-2-v2.png"
-IDR_SHIBA_WALK_3 RCDATA "Sources/DesktopPet/Resources/shiba-walk-3-v2.png"
-IDR_SHIBA_WALK_4 RCDATA "Sources/DesktopPet/Resources/shiba-walk-4-v2.png"
-IDR_SHIBA_WAITING RCDATA "Sources/DesktopPet/Resources/shiba-waiting.png"
-IDR_SHIBA_WAITING_BLINK RCDATA "Sources/DesktopPet/Resources/shiba-waiting-blink.png"
-IDR_SHIBA_WAITING_EAR RCDATA "Sources/DesktopPet/Resources/shiba-waiting-ear.png"
-IDR_SHIBA_WAITING_TAIL RCDATA "Sources/DesktopPet/Resources/shiba-waiting-tail.png"
-IDR_SHIBA_LIFT_1 RCDATA "Sources/DesktopPet/Resources/shiba-lift-1.png"
-IDR_SHIBA_LIFT_BLINK RCDATA "Sources/DesktopPet/Resources/shiba-lift-blink.png"
-IDI_APP_ICON ICON "windows/shiba-icon.ico"
+IDR_CAT RCDATA "Sources/DesktopPet/Resources/cat.png"
+IDR_CAT_BLINK RCDATA "Sources/DesktopPet/Resources/cat-blink.png"
+IDR_CAT_WALK_1 RCDATA "Sources/DesktopPet/Resources/cat-walk-1.png"
+IDR_CAT_WALK_2 RCDATA "Sources/DesktopPet/Resources/cat-walk-2.png"
+IDR_CAT_WALK_3 RCDATA "Sources/DesktopPet/Resources/cat-walk-3.png"
+IDR_CAT_WALK_4 RCDATA "Sources/DesktopPet/Resources/cat-walk-4.png"
+IDR_CAT_WAITING RCDATA "Sources/DesktopPet/Resources/cat-waiting.png"
+IDR_CAT_WAITING_BLINK RCDATA "Sources/DesktopPet/Resources/cat-waiting-blink.png"
+IDR_CAT_WAITING_EAR RCDATA "Sources/DesktopPet/Resources/cat-waiting-ear.png"
+IDR_CAT_WAITING_TAIL RCDATA "Sources/DesktopPet/Resources/cat-waiting-tail.png"
+IDR_CAT_LIFT RCDATA "Sources/DesktopPet/Resources/cat-lift.png"
+IDR_CAT_LIFT_BLINK RCDATA "Sources/DesktopPet/Resources/cat-lift-blink.png"
+IDI_APP_ICON ICON "windows/cat-icon.ico"
 1 RT_MANIFEST "windows/app.manifest"
 
 IDD_DEEPSEEK_SETTINGS DIALOGEX 0, 0, 284, 166
@@ -66,7 +66,7 @@ CAPTION "哈妮丝 · Agent 配置"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
     LTEXT           "人设同时用于普通对话和本地 Agent；固定安全规则不可编辑。", -1, 14, 10, 392, 13
-    LTEXT           "狗狗人设", -1, 14, 29, 100, 13
+    LTEXT           "猫咪人设", -1, 14, 29, 100, 13
     EDITTEXT        IDC_AGENT_PERSONA, 14, 45, 392, 82, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_TABSTOP
     PUSHBUTTON      "恢复默认人设", IDC_AGENT_PERSONA_RESET, 14, 135, 82, 19
     RTEXT           "", IDC_AGENT_PERSONA_COUNT, 260, 139, 146, 12

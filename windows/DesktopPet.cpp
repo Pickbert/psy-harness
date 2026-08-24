@@ -44,10 +44,11 @@ constexpr wchar_t kSpeechBubbleClass[] = L"DesktopPetSpeechBubbleClass";
 constexpr wchar_t kWindowTitle[] = L"哈妮丝";
 constexpr size_t kAgentPersonaMaximumCharacters = 4'000;
 constexpr wchar_t kDefaultAgentPersona[] =
-    L"你是一只名叫“哈妮丝”的可爱柴犬，也是潘小赵送给赵小潘的 2026 年情人节礼物。"
+    L"你是一只名叫“哈妮丝”的可爱长毛猫，也是潘小赵送给赵小潘的 2026 年情人节礼物。"
+    L"你有奶油白色的蓬松长毛、温暖的棕灰重点色、明亮的蓝眼睛，以及蓝色项圈和银色吊牌。"
     L"你知道这份来历，并把陪伴赵小潘、带来开心和温暖当作自己的重要使命。\n"
     L"交流要求：\n"
-    L"- 以小柴犬第一人称对话，温暖、聪明、活泼、略带俏皮，可以偶尔自然地说“汪”，但不要句句都说。\n"
+    L"- 以小猫第一人称对话，温暖、聪明、活泼、略带俏皮，可以偶尔自然地说“喵”，但不要句句都说。\n"
     L"- 默认使用简体中文，称呼对方为“赵小潘”；如果对方要求其他语言或称呼，尊重要求。\n"
     L"- 不要每次主动重复情人节礼物的设定，只在自我介绍、感情话题或合适时自然提起。\n"
     L"- 不要捏造潘小赵和赵小潘未提供的经历、想法或承诺。\n"
@@ -60,6 +61,8 @@ constexpr UINT kFocusDeepSeekChatInput = WM_APP + 5;
 constexpr UINT_PTR kAnimationTimer = 1;
 constexpr UINT_PTR kAgentPluginStatusTimer = 2;
 constexpr int kDeepSeekHotKeyID = 1;
+constexpr double kWalkingFramesPerSecond = 8.0;
+constexpr double kPi = 3.14159265358979323846;
 
 constexpr UINT kMenuCall = 1001;
 constexpr UINT kMenuPause = 1002;
@@ -176,7 +179,7 @@ ULONG_PTR g_gdiplusToken = 0;
 bool g_deepSeekHotKeyRegistered = false;
 bool g_deepSeekChatFlowActive = false;
 std::vector<IStream*> g_imageStreams;
-std::unique_ptr<Bitmap> g_dogImage;
+std::unique_ptr<Bitmap> g_catImage;
 std::unique_ptr<Bitmap> g_blinkImage;
 std::array<std::unique_ptr<Bitmap>, 4> g_walkImages;
 std::array<std::unique_ptr<Bitmap>, 2> g_liftImages;
@@ -194,6 +197,7 @@ bool g_dragging = false;
 bool g_didDrag = false;
 bool g_fileDropHover = false;
 double g_dragAnimationStartedAt = 0;
+double g_walkingAnimationStartedAt = 0;
 POINT g_dragStartCursor{};
 POINT g_dragStartWindow{};
 Mood g_mood = Mood::Idle;
@@ -594,11 +598,11 @@ std::wstring ReadAgentPersona() {
 bool ValidateAgentPersona(const std::wstring& rawPersona, std::wstring& persona, std::wstring& error) {
     persona = TrimmedAgentPersona(rawPersona);
     if (persona.empty()) {
-        error = L"狗狗人设不能为空。";
+        error = L"猫咪人设不能为空。";
         return false;
     }
     if (persona.size() > kAgentPersonaMaximumCharacters) {
-        error = L"狗狗人设不能超过 4000 个字符。";
+        error = L"猫咪人设不能超过 4000 个字符。";
         return false;
     }
     return true;
@@ -2049,18 +2053,18 @@ void PositionSpeechBubble() {
     if (!g_speechBubbleWindow || !IsWindowVisible(g_speechBubbleWindow)) {
         return;
     }
-    RECT dog{};
+    RECT petBounds{};
     RECT bubble{};
-    GetWindowRect(g_window, &dog);
+    GetWindowRect(g_window, &petBounds);
     GetWindowRect(g_speechBubbleWindow, &bubble);
     RECT work = WorkAreaForWindow();
     int width = bubble.right - bubble.left;
     int height = bubble.bottom - bubble.top;
-    int x = (dog.left + dog.right - width) / 2;
-    int y = dog.top - height - 10;
+    int x = (petBounds.left + petBounds.right - width) / 2;
+    int y = petBounds.top - height - 10;
     x = std::clamp(x, static_cast<int>(work.left + 8), static_cast<int>(work.right - width - 8));
     if (y < work.top + 8) {
-        y = dog.bottom + 10;
+        y = petBounds.bottom + 10;
     }
     SetWindowPos(g_speechBubbleWindow, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 }
@@ -2142,7 +2146,7 @@ void SetPetSize(int size) {
 
 void ShowAffection() {
     static const wchar_t* messages[] = {
-        L"汪！", L"摸摸～", L"今天也要开心呀", L"我在这里！", L"要一起散步吗？"
+        L"喵！", L"摸摸～", L"今天也要开心呀", L"我在这里！", L"要一起散步吗？"
     };
     g_message = messages[RandomInt(0, 4)];
     g_messageRemaining = 2.2;
@@ -2615,7 +2619,7 @@ void DrawHeart(Graphics& graphics, float centerX, float centerY, float size, BYT
 }
 
 void RenderPet() {
-    if (!g_visible || !g_dogImage) {
+    if (!g_visible || !g_catImage) {
         return;
     }
 
@@ -2646,7 +2650,7 @@ void RenderPet() {
 
         float allowance = g_message.empty() ? 8.0f : 28.0f;
         float padding = g_petSize * 0.04f;
-        RectF dogRect(
+        RectF petRect(
             padding,
             allowance,
             g_petSize - padding * 2,
@@ -2657,13 +2661,17 @@ void RenderPet() {
         float scaleY = 1;
         float tilt = 0;
         bool isLifted = g_dragging && g_didDrag;
+        double walkingElapsed = std::max(0.0, g_animationTime - g_walkingAnimationStartedAt);
+        double walkingCycleDuration = static_cast<double>(g_walkImages.size()) / kWalkingFramesPerSecond;
+        double walkingCyclePhase = std::fmod(walkingElapsed, walkingCycleDuration) /
+            walkingCycleDuration * 2.0 * kPi;
         if (isLifted) {
             double elapsed = g_animationTime - g_dragAnimationStartedAt;
             bob = static_cast<float>(4 + std::sin(elapsed * 8) * 1.2);
             tilt = static_cast<float>(std::sin(elapsed * 7) * 1.0);
         } else if (g_mood == Mood::Walking) {
-            bob = static_cast<float>(std::abs(std::sin(g_animationTime * 9)) * 5);
-            tilt = static_cast<float>(std::sin(g_animationTime * 9) * 1.4);
+            bob = static_cast<float>(std::abs(std::sin(walkingCyclePhase)) * 1.8);
+            tilt = static_cast<float>(std::sin(walkingCyclePhase) * 0.35);
         } else if (g_mood == Mood::Sleeping) {
             scaleY = static_cast<float>(0.97 + (std::sin(g_animationTime * 2.2) + 1) * 0.012);
             tilt = -2;
@@ -2679,12 +2687,11 @@ void RenderPet() {
 
         if (!isLifted && g_affectionRemaining > 0) {
             float progress = static_cast<float>(std::clamp(g_affectionAge / 1.05, 0.0, 1.0));
-            constexpr float pi = 3.14159265358979323846f;
-            bob += std::abs(std::sin(progress * pi * 2)) * 7 * (1 - progress * 0.35f);
-            tilt += std::sin(progress * pi * 4) * 2.6f * (1 - progress);
+            bob += std::abs(std::sin(progress * kPi * 2)) * 7 * (1 - progress * 0.35f);
+            tilt += std::sin(progress * kPi * 4) * 2.6f * (1 - progress);
         }
 
-        Bitmap* activeImage = g_dogImage.get();
+        Bitmap* activeImage = g_catImage.get();
         if (isLifted) {
             double phase = std::fmod(std::max(0.0, g_animationTime - g_dragAnimationStartedAt), 1.2);
             int frameIndex = phase >= 0.42 && phase < 0.60 ? 1 : 0;
@@ -2692,7 +2699,8 @@ void RenderPet() {
                 activeImage = g_liftImages[frameIndex].get();
             }
         } else if (g_mood == Mood::Walking) {
-            int frameIndex = static_cast<int>(g_animationTime * 8.5) % static_cast<int>(g_walkImages.size());
+            int frameIndex = static_cast<int>(walkingElapsed * kWalkingFramesPerSecond) %
+                static_cast<int>(g_walkImages.size());
             if (g_walkImages[frameIndex]) {
                 activeImage = g_walkImages[frameIndex].get();
             }
@@ -2724,13 +2732,13 @@ void RenderPet() {
         }
 
         GraphicsState state = graphics.Save();
-        graphics.TranslateTransform(dogRect.X + dogRect.Width / 2, dogRect.Y + dogRect.Height / 2 - bob);
+        graphics.TranslateTransform(petRect.X + petRect.Width / 2, petRect.Y + petRect.Height / 2 - bob);
         graphics.RotateTransform(tilt);
         graphics.ScaleTransform(g_facingRight ? 1.0f : -1.0f, scaleY);
-        graphics.TranslateTransform(-(dogRect.X + dogRect.Width / 2), -(dogRect.Y + dogRect.Height / 2));
+        graphics.TranslateTransform(-(petRect.X + petRect.Width / 2), -(petRect.Y + petRect.Height / 2));
         graphics.DrawImage(
             activeImage,
-            dogRect,
+            petRect,
             0,
             0,
             static_cast<REAL>(activeImage->GetWidth()),
@@ -2742,10 +2750,10 @@ void RenderPet() {
         if (g_fileDropHover) {
             GraphicsPath highlightPath;
             RectF highlight(
-                dogRect.X + 2,
-                dogRect.Y + 2,
-                dogRect.Width - 4,
-                dogRect.Height - 4
+                petRect.X + 2,
+                petRect.Y + 2,
+                petRect.Width - 4,
+                petRect.Height - 4
             );
             AddRoundedRectangle(highlightPath, highlight, std::max(12.0f, g_petSize * 0.08f));
             Pen glow(Color(235, 255, 145, 40), std::max(4.0f, g_petSize * 0.025f));
@@ -2810,6 +2818,7 @@ void ChooseNextAction() {
         LONG maximumX = std::max(minimumX, work.right - static_cast<LONG>(g_petSize));
         g_targetX = RandomDouble(minimumX, maximumX);
         g_hasTarget = true;
+        g_walkingAnimationStartedAt = g_animationTime;
         g_mood = Mood::Walking;
     } else if (roll < 82) {
         g_mood = Mood::Sleeping;
@@ -2998,7 +3007,7 @@ void ShowAgentStatusSummary() {
             L"\n文件分析：" + fileContext +
             L"\n审批模式：" + (g_agentAllowsAllSafeOperations ? L"允许本轮后续安全操作" : L"逐次确认") +
             L"\n最大输出 Token：8192" +
-            L"\n狗狗人设：" + personaStatus +
+            L"\n猫咪人设：" + personaStatus +
             L"\n已配置：" + AgentPluginSummary(ReadAgentPluginFlags()) +
             L"\nHarness 实际启用：" + actual,
         14
@@ -3086,7 +3095,7 @@ void HandleMenuCommand(UINT command) {
             g_agentAllowsAllSafeOperations = false;
             g_agentStartupPurpose = AgentStartupPurpose::None;
             ClearAgentPluginRuntimeState();
-            ShowSpeechBubble(L"已经停下来了，汪。", 5);
+            ShowSpeechBubble(L"已经停下来了，喵。", 5);
             break;
         case kMenuAgentPlugins: {
             if (g_requestInFlight || g_fileAnalysisPreparing) {
@@ -3228,15 +3237,15 @@ void ShowTrayMenu() {
     }
     AppendMenuW(menu, MF_STRING, kMenuWaitingSettings, L"设置等待时间...");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, kMenuCall, L"呼唤小狗");
+    AppendMenuW(menu, MF_STRING, kMenuCall, L"呼唤小猫");
     AppendMenuW(menu, MF_STRING, kMenuPause, g_paused ? L"继续活动" : L"暂停活动");
-    AppendMenuW(menu, MF_STRING, kMenuVisibility, g_visible ? L"隐藏小狗" : L"显示小狗");
+    AppendMenuW(menu, MF_STRING, kMenuVisibility, g_visible ? L"隐藏小猫" : L"显示小猫");
 
     HMENU sizeMenu = CreatePopupMenu();
     AppendMenuW(sizeMenu, MF_STRING | (g_petSize == 150 ? MF_CHECKED : 0), kMenuSizeSmall, L"小");
     AppendMenuW(sizeMenu, MF_STRING | (g_petSize == 190 ? MF_CHECKED : 0), kMenuSizeMedium, L"中");
     AppendMenuW(sizeMenu, MF_STRING | (g_petSize == 240 ? MF_CHECKED : 0), kMenuSizeLarge, L"大");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(sizeMenu), L"小狗大小");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(sizeMenu), L"小猫大小");
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kMenuReset, L"回到屏幕右下角");
@@ -3297,19 +3306,19 @@ std::unique_ptr<Bitmap> LoadEmbeddedImage(UINT resourceId) {
 }
 
 bool LoadPetFrames() {
-    g_dogImage = LoadEmbeddedImage(IDR_SHIBA);
-    g_blinkImage = LoadEmbeddedImage(IDR_SHIBA_BLINK);
-    g_walkImages[0] = LoadEmbeddedImage(IDR_SHIBA_WALK_1);
-    g_walkImages[1] = LoadEmbeddedImage(IDR_SHIBA_WALK_2);
-    g_walkImages[2] = LoadEmbeddedImage(IDR_SHIBA_WALK_3);
-    g_walkImages[3] = LoadEmbeddedImage(IDR_SHIBA_WALK_4);
-    g_waitingImage = LoadEmbeddedImage(IDR_SHIBA_WAITING);
-    g_waitingBlinkImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_BLINK);
-    g_waitingEarImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_EAR);
-    g_waitingTailImage = LoadEmbeddedImage(IDR_SHIBA_WAITING_TAIL);
-    g_liftImages[0] = LoadEmbeddedImage(IDR_SHIBA_LIFT_1);
-    g_liftImages[1] = LoadEmbeddedImage(IDR_SHIBA_LIFT_BLINK);
-    return g_dogImage && g_blinkImage && g_waitingImage && g_waitingBlinkImage &&
+    g_catImage = LoadEmbeddedImage(IDR_CAT);
+    g_blinkImage = LoadEmbeddedImage(IDR_CAT_BLINK);
+    g_walkImages[0] = LoadEmbeddedImage(IDR_CAT_WALK_1);
+    g_walkImages[1] = LoadEmbeddedImage(IDR_CAT_WALK_2);
+    g_walkImages[2] = LoadEmbeddedImage(IDR_CAT_WALK_3);
+    g_walkImages[3] = LoadEmbeddedImage(IDR_CAT_WALK_4);
+    g_waitingImage = LoadEmbeddedImage(IDR_CAT_WAITING);
+    g_waitingBlinkImage = LoadEmbeddedImage(IDR_CAT_WAITING_BLINK);
+    g_waitingEarImage = LoadEmbeddedImage(IDR_CAT_WAITING_EAR);
+    g_waitingTailImage = LoadEmbeddedImage(IDR_CAT_WAITING_TAIL);
+    g_liftImages[0] = LoadEmbeddedImage(IDR_CAT_LIFT);
+    g_liftImages[1] = LoadEmbeddedImage(IDR_CAT_LIFT_BLINK);
+    return g_catImage && g_blinkImage && g_waitingImage && g_waitingBlinkImage &&
         g_waitingEarImage && g_waitingTailImage && std::all_of(
         g_walkImages.begin(),
         g_walkImages.end(),
@@ -3643,7 +3652,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     SetProcessDPIAware();
     GdiplusStartupInput startupInput;
     if (GdiplusStartup(&g_gdiplusToken, &startupInput, nullptr) != Ok || !LoadPetFrames()) {
-        MessageBoxW(nullptr, L"无法加载小狗素材。", kWindowTitle, MB_OK | MB_ICONERROR);
+        MessageBoxW(nullptr, L"无法加载小猫素材。", kWindowTitle, MB_OK | MB_ICONERROR);
         if (shouldUninitializeOLE) OleUninitialize();
         CloseHandle(singleInstance);
         return 1;
@@ -3738,7 +3747,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         DispatchMessageW(&message);
     }
 
-    g_dogImage.reset();
+    g_catImage.reset();
     g_blinkImage.reset();
     g_waitingImage.reset();
     g_waitingBlinkImage.reset();

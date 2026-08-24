@@ -1,6 +1,6 @@
 # 哈妮丝（DesktopPet / PetHarness）
 
-哈妮丝是一只运行在 macOS 和 Windows 桌面上的原生小柴犬，也是一套带安全审批能力的本地 DeepSeek Agent 宿主。它可以随机散步、待机、被拖动和点击互动；配置自己的 DeepSeek API Key 后，还可以进行连续对话、分析拖入的文件，并在用户选定的工作目录内读取文件、修改项目和运行命令。
+哈妮丝是一只运行在 macOS 和 Windows 桌面上的原生卡通长毛猫，也是一套带安全审批能力的本地 DeepSeek Agent 宿主。它拥有奶油白色长毛、棕灰重点色、大蓝眼睛、蓝色项圈和银色吊牌，可以随机散步、待机、被拖动和点击互动；配置自己的 DeepSeek API Key 后，还可以进行连续对话、分析拖入的文件，并在用户选定的工作目录内读取文件、修改项目和运行命令。
 
 项目不依赖 Electron：macOS 宿主使用 Swift + AppKit，Windows 宿主使用 C++20 + Win32。完整 Agent 以独立 sidecar 进程运行，通过换行分隔的 JSON-RPC 与原生界面通信。
 
@@ -63,19 +63,19 @@ Get-FileHash .\DesktopPet-Windows-v0.7.1-Agent-x64-Setup.exe -Algorithm SHA256
 
 ## 首次使用
 
-1. 启动后，右键小狗或菜单栏/托盘图标，选择“设置 DeepSeek…”。
+1. 启动后，右键小猫或菜单栏/托盘图标，选择“设置 DeepSeek…”。
 2. 填写自己的 API Key，并选择 `DeepSeek V4 Flash` 或 `DeepSeek V4 Pro`。
-3. 连续快速点击小狗 3 次，或使用全局快捷键打开输入框。
+3. 连续快速点击小猫 3 次，或使用全局快捷键打开输入框。
 4. 完整 Agent 版第一次对话会要求选择一个长期工作目录。
 5. 输入问题并按回车；后续再次唤醒输入框可继续当前上下文。
 
 API Key 不会写入项目文件：macOS 使用系统钥匙串，Windows 使用 Windows 凭据管理器。普通对话和 Agent 都直接连接 DeepSeek 官方接口。
 
-完整 Agent 版可在“本地 Agent → Agent 配置…”中编辑狗狗人设并管理插件。人设默认沿用哈妮丝原有设定，在本机全局保存并同时用于普通 DeepSeek 对话和 Harness Agent；切换工作目录不会改变人设。保存后会开启新的对话上下文，并在条件允许时自动重启 Agent。“恢复默认人设”可随时还原内置内容。
+完整 Agent 版可在“本地 Agent → Agent 配置…”中编辑猫咪人设并管理插件。人设默认沿用哈妮丝原有设定，在本机全局保存并同时用于普通 DeepSeek 对话和 Harness Agent；切换工作目录不会改变人设。保存后会开启新的对话上下文，并在条件允许时自动重启 Agent。“恢复默认人设”可随时还原内置内容。
 
 ### 拖拽文件分析
 
-将文件拖到完整 Agent 版的小狗身上，本地预处理完成后再输入总结、对比、提取数据等要求。文件会复制到所选工作目录下：
+将文件拖到完整 Agent 版的小猫身上，本地预处理完成后再输入总结、对比、提取数据等要求。文件会复制到所选工作目录下：
 
 ```text
 DesktopPet-FileAnalysis/<会话 ID>/
@@ -382,7 +382,7 @@ DESKTOPPET_REQUIRE_AGENT_RUNTIME=1 ./scripts/build-app.sh release
 
 ## 素材与许可证
 
-`Sources/DesktopPet/Resources/` 包含本项目生成的原创小柴犬角色与动画帧，均为带 Alpha 通道的透明 PNG。第三方组件的许可证和声明记录在 `Agent/THIRD_PARTY_NOTICES.md`，构建脚本会把相关许可证放入发布包。
+`Sources/DesktopPet/Resources/` 包含本项目生成的原创卡通长毛猫角色与动画帧，均为带 Alpha 通道的透明 PNG。第三方组件的许可证和声明记录在 `Agent/THIRD_PARTY_NOTICES.md`，构建脚本会把相关许可证放入发布包。
 
 仓库当前没有根目录项目许可证；在公开分发源码、接收外部贡献或授权第三方再发布之前，应补充明确的项目级 `LICENSE`。
 

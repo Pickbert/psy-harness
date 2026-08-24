@@ -85,7 +85,7 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate, NSTextVie
         subtitle.frame = CGRect(x: 28, y: 620, width: 620, height: 22)
         content.addSubview(subtitle)
 
-        let personaTitle = NSTextField(labelWithString: "狗狗人设")
+        let personaTitle = NSTextField(labelWithString: "猫咪人设")
         personaTitle.font = .systemFont(ofSize: 15, weight: .semibold)
         personaTitle.frame = CGRect(x: 28, y: 585, width: 200, height: 22)
         content.addSubview(personaTitle)

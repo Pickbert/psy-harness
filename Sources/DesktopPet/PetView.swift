@@ -19,10 +19,24 @@ struct PetFrames {
 }
 
 enum PetAnimation {
+    static let walkingFramesPerSecond: TimeInterval = 8
+
     static func liftedFrameIndex(elapsed: TimeInterval, frameCount: Int) -> Int {
         guard frameCount > 1 else { return 0 }
         let phase = max(0, elapsed).truncatingRemainder(dividingBy: 1.2)
         return phase >= 0.42 && phase < 0.60 ? 1 : 0
+    }
+
+    static func walkingFrameIndex(elapsed: TimeInterval, frameCount: Int) -> Int {
+        guard frameCount > 1 else { return 0 }
+        return Int(max(0, elapsed) * walkingFramesPerSecond) % frameCount
+    }
+
+    static func walkingCyclePhase(elapsed: TimeInterval, frameCount: Int) -> CGFloat {
+        guard frameCount > 1 else { return 0 }
+        let cycleDuration = TimeInterval(frameCount) / walkingFramesPerSecond
+        let cycleProgress = max(0, elapsed).truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
+        return CGFloat(cycleProgress * 2 * .pi)
     }
 }
 
@@ -43,6 +57,11 @@ final class PetView: NSView {
 
     var mood: PetMood = .idle {
         didSet {
+            if mood == .walking, oldValue != .walking {
+                walkingStartedAt = animationTime
+            } else if mood != .walking {
+                walkingStartedAt = nil
+            }
             if mood == .waiting, oldValue != .waiting {
                 waitingMotion = nil
                 nextWaitingMotionAt = animationTime + Double.random(in: 1.2...2.8)
@@ -62,6 +81,7 @@ final class PetView: NSView {
     private var waitingMotionStartedAt: TimeInterval = 0
     private var waitingMotionEndsAt: TimeInterval = 0
     private var nextWaitingMotionAt: TimeInterval = 2
+    private var walkingStartedAt: TimeInterval?
     private var affectionStartedAt: TimeInterval = -10
     private var affectionEndsAt: TimeInterval = -10
     private var mouseDownLocation: CGPoint?
@@ -110,8 +130,8 @@ final class PetView: NSView {
     }
 
     func showAffection() {
-        let messages = ["汪！", "摸摸～", "今天也要开心呀", "我在这里！", "要一起散步吗？"]
-        message = messages.randomElement() ?? "汪！"
+        let messages = ["喵！", "摸摸～", "今天也要开心呀", "我在这里！", "要一起散步吗？"]
+        message = messages.randomElement() ?? "喵！"
         messageExpiresAt = animationTime + 2.2
         affectionStartedAt = animationTime
         affectionEndsAt = animationTime + 1.05
@@ -211,7 +231,7 @@ final class PetView: NSView {
         NSColor.clear.setFill()
         dirtyRect.fill()
 
-        drawDog()
+        drawPet()
         drawFileDropHighlight()
         drawHearts()
         drawMessage()
@@ -252,12 +272,12 @@ final class PetView: NSView {
         path.stroke()
     }
 
-    private func drawDog() {
+    private func drawPet() {
         guard let context = NSGraphicsContext.current else { return }
 
         let messageAllowance: CGFloat = message == nil ? 8 : 28
         let sidePadding = bounds.width * 0.04
-        let dogRect = CGRect(
+        let petRect = CGRect(
             x: sidePadding,
             y: 2,
             width: bounds.width - sidePadding * 2,
@@ -276,9 +296,13 @@ final class PetView: NSView {
         } else {
             switch mood {
             case .walking:
-                bob = abs(sin(animationTime * 9)) * 5
+                let phase = PetAnimation.walkingCyclePhase(
+                    elapsed: walkingElapsed,
+                    frameCount: frames.walking.count
+                )
+                bob = abs(sin(phase)) * 1.8
                 breathingScale = 1
-                tilt = sin(animationTime * 9) * 0.025
+                tilt = sin(phase) * 0.006
             case .sleeping:
                 bob = 0
                 breathingScale = 0.97 + CGFloat((sin(animationTime * 2.2) + 1) * 0.012)
@@ -302,12 +326,12 @@ final class PetView: NSView {
 
         context.saveGraphicsState()
         let transform = NSAffineTransform()
-        transform.translateX(by: dogRect.midX, yBy: dogRect.midY + bob)
+        transform.translateX(by: petRect.midX, yBy: petRect.midY + bob)
         transform.rotate(byRadians: tilt)
         transform.scaleX(by: isFacingRight ? 1 : -1, yBy: breathingScale)
-        transform.translateX(by: -dogRect.midX, yBy: -dogRect.midY)
+        transform.translateX(by: -petRect.midX, yBy: -petRect.midY)
         transform.concat()
-        activeFrame().draw(in: dogRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high])
+        activeFrame().draw(in: petRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high])
         context.restoreGraphicsState()
 
         if mood == .sleeping, !isBeingDragged {
@@ -356,7 +380,10 @@ final class PetView: NSView {
         switch mood {
         case .walking:
             guard !frames.walking.isEmpty else { return frames.idle }
-            let frameIndex = Int(animationTime * 8.5) % frames.walking.count
+            let frameIndex = PetAnimation.walkingFrameIndex(
+                elapsed: walkingElapsed,
+                frameCount: frames.walking.count
+            )
             return frames.walking[frameIndex]
         case .sleeping:
             return frames.blink
@@ -385,6 +412,10 @@ final class PetView: NSView {
             }
             return frames.idle
         }
+    }
+
+    private var walkingElapsed: TimeInterval {
+        max(0, animationTime - (walkingStartedAt ?? animationTime))
     }
 
     private func drawHearts() {
