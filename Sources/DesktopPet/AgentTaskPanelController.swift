@@ -2,7 +2,7 @@ import AppKit
 
 final class AgentTaskPanelController: NSObject, NSWindowDelegate {
     private let panel: NSPanel
-    private let titleLabel = NSTextField(labelWithString: "哈妮丝 Agent")
+    private let titleLabel = NSTextField(labelWithString: "哈妮丝 · 咨询助手")
     private let statusLabel = NSTextField(labelWithString: "准备中…")
     private let textView = NSTextView()
     private let approvalCard = NSView()
@@ -31,8 +31,8 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
     }
 
     func show(workspace: URL) {
-        titleLabel.stringValue = "哈妮丝 Agent · \(workspace.lastPathComponent)"
-        statusLabel.stringValue = "正在连接 DeepSeek Harness…"
+        titleLabel.stringValue = "哈妮丝 · 咨询助手 · \(workspace.lastPathComponent)"
+        statusLabel.stringValue = "正在连接咨询助手…"
         transcript = ""
         activityLines.removeAll()
         renderContent()
@@ -93,13 +93,13 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
 
     func finish(_ text: String) {
         hideApproval(answer: .rejected)
-        statusLabel.stringValue = "任务完成"
+        statusLabel.stringValue = "本轮处理完成"
         updateTranscript(text)
     }
 
     func showError(_ message: String) {
         hideApproval(answer: .rejected)
-        statusLabel.stringValue = "Agent 出错"
+        statusLabel.stringValue = "咨询助手出错"
         transcript = message
         renderContent()
         NSApp.activate(ignoringOtherApps: true)
@@ -117,7 +117,7 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
 
     @objc private func approveAll() {
         hideApproval(answer: .allowedAll)
-        statusLabel.stringValue = "已允许当前 Agent 后续安全操作"
+        statusLabel.stringValue = "已允许咨询助手本轮后续安全操作"
     }
 
     @objc private func reject() {
@@ -158,12 +158,12 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
     }
 
     private func configure() {
-        panel.title = "哈妮丝 Agent"
+        panel.title = "哈妮丝 · 咨询助手"
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.delegate = self
-        panel.setAccessibilityTitle("哈妮丝 Agent 任务面板")
+        panel.setAccessibilityTitle("哈妮丝咨询助手处理面板")
 
         let background = NSVisualEffectView()
         background.translatesAutoresizingMaskIntoConstraints = false
@@ -226,7 +226,7 @@ final class AgentTaskPanelController: NSObject, NSWindowDelegate {
         approveButton.keyEquivalent = "\r"
         approveAllButton.target = self
         approveAllButton.action = #selector(approveAll)
-        approveAllButton.toolTip = "自动允许当前 Agent 运行期间的后续安全操作；重启 Agent 后恢复逐次确认。"
+        approveAllButton.toolTip = "自动允许咨询助手本轮运行期间的后续安全操作；重启咨询助手后恢复逐次确认。"
         rejectButton.target = self
         rejectButton.action = #selector(reject)
 

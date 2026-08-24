@@ -35,62 +35,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.toolTip = "哈妮丝"
 
         let menu = NSMenu()
-        let chatItem = NSMenuItem(title: "开始 AI 对话…", action: #selector(startChat), keyEquivalent: "0")
+        let chatItem = NSMenuItem(title: "开始本轮咨询…", action: #selector(startChat), keyEquivalent: "0")
         chatItem.keyEquivalentModifierMask = [.command, .option]
         chatItem.target = self
         menu.addItem(chatItem)
         self.chatItem = chatItem
 
-        let deepSeekItem = NSMenuItem(title: "设置 DeepSeek API…", action: #selector(configureDeepSeek), keyEquivalent: "")
+        let endConsultationItem = NSMenuItem(
+            title: "结束本轮咨询",
+            action: #selector(newAgentConversation),
+            keyEquivalent: ""
+        )
+        endConsultationItem.target = self
+        menu.addItem(endConsultationItem)
+
+        let deepSeekItem = NSMenuItem(title: "咨询模型设置…", action: #selector(configureDeepSeek), keyEquivalent: "")
         deepSeekItem.target = self
         menu.addItem(deepSeekItem)
         if AgentProcessManager.platformSupported {
-            let agentMenu = NSMenu(title: "本地 Agent")
+            let agentMenu = NSMenu(title: "咨询助手")
             let agentEntries: [(String, Selector)] = [
-                ("选择 Agent 工作目录…", #selector(selectAgentWorkspace)),
-                ("清除 Agent 工作目录", #selector(clearAgentWorkspace)),
-                ("新建对话", #selector(newAgentConversation)),
-                ("停止当前任务", #selector(stopAgentTask)),
-                ("Agent 配置…", #selector(configureAgentSettings)),
-                ("重启 Agent", #selector(restartAgent)),
-                ("查看 Agent 状态", #selector(showAgentStatus))
+                ("选择咨询资料目录…", #selector(selectAgentWorkspace)),
+                ("清除咨询资料目录", #selector(clearAgentWorkspace)),
+                ("停止当前处理", #selector(stopAgentTask)),
+                ("咨询助手设置…", #selector(configureAgentSettings)),
+                ("重启咨询助手", #selector(restartAgent)),
+                ("查看咨询助手状态", #selector(showAgentStatus))
             ]
             for (title, action) in agentEntries {
                 let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
                 entry.target = self
                 agentMenu.addItem(entry)
             }
-            let agentRoot = NSMenuItem(title: "本地 Agent", action: nil, keyEquivalent: "")
+            let agentRoot = NSMenuItem(title: "咨询助手", action: nil, keyEquivalent: "")
             agentRoot.submenu = agentMenu
             menu.addItem(agentRoot)
         }
-        let waitingItem = NSMenuItem(title: "设置等待时间…", action: #selector(configureWaiting), keyEquivalent: "")
+        let waitingItem = NSMenuItem(title: "设置陪伴等待时间…", action: #selector(configureWaiting), keyEquivalent: "")
         waitingItem.target = self
         menu.addItem(waitingItem)
         menu.addItem(.separator())
 
-        let callItem = NSMenuItem(title: "呼唤小猫", action: #selector(callPet), keyEquivalent: "")
+        let callItem = NSMenuItem(title: "呼唤咨询猫", action: #selector(callPet), keyEquivalent: "")
         callItem.target = self
         menu.addItem(callItem)
 
-        let pauseItem = NSMenuItem(title: "暂停活动", action: #selector(togglePause), keyEquivalent: "")
+        let pauseItem = NSMenuItem(title: "暂停陪伴", action: #selector(togglePause), keyEquivalent: "")
         pauseItem.target = self
         menu.addItem(pauseItem)
         self.pauseItem = pauseItem
 
-        let visibilityItem = NSMenuItem(title: "隐藏小猫", action: #selector(toggleVisibility), keyEquivalent: "")
+        let visibilityItem = NSMenuItem(title: "隐藏咨询猫", action: #selector(toggleVisibility), keyEquivalent: "")
         visibilityItem.target = self
         menu.addItem(visibilityItem)
         self.visibilityItem = visibilityItem
 
-        let sizeMenu = NSMenu(title: "小猫大小")
+        let sizeMenu = NSMenu(title: "咨询猫大小")
         for (title, size) in [("小", 150), ("中", 190), ("大", 240)] {
             let sizeItem = NSMenuItem(title: title, action: #selector(changeSize(_:)), keyEquivalent: "")
             sizeItem.target = self
             sizeItem.representedObject = size
             sizeMenu.addItem(sizeItem)
         }
-        let sizeRootItem = NSMenuItem(title: "小猫大小", action: nil, keyEquivalent: "")
+        let sizeRootItem = NSMenuItem(title: "咨询猫大小", action: nil, keyEquivalent: "")
         sizeRootItem.submenu = sizeMenu
         menu.addItem(sizeRootItem)
 
@@ -188,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func markHotKeyUnavailable() {
-        chatItem?.title = "开始 AI 对话…（⌥⌘0 已被占用）"
+        chatItem?.title = "开始本轮咨询…（⌥⌘0 已被占用）"
         chatItem?.keyEquivalent = ""
     }
 
@@ -196,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let petController else { return }
         if !petController.isVisible {
             petController.show()
-            visibilityItem?.title = "隐藏小猫"
+            visibilityItem?.title = "隐藏咨询猫"
         }
         NSApp.activate(ignoringOtherApps: true)
         petController.startDeepSeekChat()
@@ -204,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func callPet() {
         petController?.callPet()
-        visibilityItem?.title = "隐藏小猫"
+        visibilityItem?.title = "隐藏咨询猫"
     }
 
     @objc private func startChat() {
@@ -250,17 +257,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func togglePause() {
         guard let petController else { return }
         petController.isPaused.toggle()
-        pauseItem?.title = petController.isPaused ? "继续活动" : "暂停活动"
+        pauseItem?.title = petController.isPaused ? "继续陪伴" : "暂停陪伴"
     }
 
     @objc private func toggleVisibility() {
         guard let petController else { return }
         if petController.isVisible {
             petController.hide()
-            visibilityItem?.title = "显示小猫"
+            visibilityItem?.title = "显示咨询猫"
         } else {
             petController.show()
-            visibilityItem?.title = "隐藏小猫"
+            visibilityItem?.title = "隐藏咨询猫"
         }
     }
 
@@ -277,7 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "哈妮丝"
-        alert.informativeText = "一只会散步、打盹，也喜欢被摸摸的 macOS 桌面宠物。\n\n拖动它可以改变位置，单击它会获得回应。"
+        alert.informativeText = "一只会倾听、陪伴，也会散步和打盹的心理咨询猫。\n\n你可以和哈妮丝聊聊情绪、压力与困扰；她会陪你梳理感受，但不能替代专业心理治疗或紧急援助。\n\n拖动她可以改变位置，单击她会获得回应。"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好呀")
         alert.runModal()

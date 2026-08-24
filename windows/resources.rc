@@ -24,14 +24,14 @@ IDI_APP_ICON ICON "windows/cat-icon.ico"
 
 IDD_DEEPSEEK_SETTINGS DIALOGEX 0, 0, 284, 166
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "DeepSeek 设置"
+CAPTION "咨询模型设置（DeepSeek）"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
     LTEXT           "API Key（安全保存到 Windows 凭据管理器）", -1, 10, 10, 264, 12
     EDITTEXT        IDC_API_KEY, 10, 25, 264, 16, ES_PASSWORD | ES_AUTOHSCROLL | WS_TABSTOP
     LTEXT           "模型", -1, 10, 51, 50, 12
     COMBOBOX        IDC_MODEL, 10, 65, 264, 70, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "文件分析单文件上限（1–100 MB）", -1, 10, 92, 180, 12
+    LTEXT           "咨询资料单份上限（1–100 MB）", -1, 10, 92, 180, 12
     EDITTEXT        IDC_FILE_LIMIT_MB, 196, 89, 78, 17, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
     LTEXT           "每批最多 5 个文件，总量和解析结果分别不超过 100 MB。", -1, 10, 114, 264, 12
     PUSHBUTTON      "清除密钥", IDC_CLEAR_KEY, 10, 141, 58, 15
@@ -41,7 +41,7 @@ END
 
 IDD_FILE_ANALYSIS_CHAT DIALOGEX 0, 0, 304, 76
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "让哈妮丝分析文件"
+CAPTION "让哈妮丝分析咨询资料"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
     CONTROL         "", IDC_CHAT_ATTACHMENTS, "STATIC", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS | WS_BORDER, 10, 9, 284, 18
@@ -52,7 +52,7 @@ END
 
 IDD_DEEPSEEK_CHAT DIALOGEX 0, 0, 284, 50
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "问问哈妮丝"
+CAPTION "和哈妮丝开始本轮咨询"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
     EDITTEXT        IDC_CHAT_INPUT, 10, 10, 218, 18, ES_AUTOHSCROLL | WS_TABSTOP
@@ -60,44 +60,39 @@ BEGIN
     LTEXT           "Enter 发送  ·  Esc 关闭", -1, 10, 35, 150, 10
 END
 
-IDD_AGENT_PLUGIN_SETTINGS DIALOGEX 0, 0, 420, 425
+IDD_AGENT_PLUGIN_SETTINGS DIALOGEX 0, 0, 420, 295
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "哈妮丝 · Agent 配置"
+CAPTION "哈妮丝 · 咨询助手设置"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
-    LTEXT           "人设同时用于普通对话和本地 Agent；固定安全规则不可编辑。", -1, 14, 10, 392, 13
-    LTEXT           "猫咪人设", -1, 14, 29, 100, 13
-    EDITTEXT        IDC_AGENT_PERSONA, 14, 45, 392, 82, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "恢复默认人设", IDC_AGENT_PERSONA_RESET, 14, 135, 82, 19
-    RTEXT           "", IDC_AGENT_PERSONA_COUNT, 260, 139, 146, 12
-    CONTROL         "", -1, "STATIC", SS_ETCHEDHORZ, 14, 161, 392, 1
-    LTEXT           "配置会在保存后重启 Agent，并校验 Harness 实际插件状态。", IDC_PLUGIN_RUNTIME_STATUS, 14, 170, 392, 13
-    AUTOCHECKBOX    "本地技能库", IDC_PLUGIN_SKILLS, 16, 193, 170, 14, WS_TABSTOP
-    LTEXT           "加载工作目录 .desktop-pet/skills 中的技能。", -1, 34, 209, 265, 12
-    RTEXT           "", IDC_PLUGIN_SKILLS_STATUS, 302, 194, 104, 12
-    AUTOCHECKBOX    "任务清单", IDC_PLUGIN_TODO, 16, 233, 170, 14, WS_TABSTOP
-    LTEXT           "启用 todo_write，跟踪多步骤任务。", -1, 34, 249, 265, 12
-    RTEXT           "", IDC_PLUGIN_TODO_STATUS, 302, 234, 104, 12
-    AUTOCHECKBOX    "长期目标", IDC_PLUGIN_GOALS, 16, 273, 170, 14, WS_TABSTOP
-    LTEXT           "启用目标创建、查询和更新工具。", -1, 34, 289, 265, 12
-    RTEXT           "", IDC_PLUGIN_GOALS_STATUS, 302, 274, 104, 12
-    AUTOCHECKBOX    "DeepSeek 网页搜索", IDC_PLUGIN_WEB_SEARCH, 16, 313, 190, 14, WS_TABSTOP
-    LTEXT           "复用现有 API Key；会产生额外模型调用和 Token 消耗。", -1, 34, 329, 265, 12
-    RTEXT           "", IDC_PLUGIN_WEB_SEARCH_STATUS, 302, 314, 104, 12
-    CONTROL         "", -1, "STATIC", SS_ETCHEDHORZ, 14, 353, 392, 1
-    LTEXT           "", IDC_PLUGIN_SKILL_SUMMARY, 16, 365, 390, 13, SS_LEFT | SS_ENDELLIPSIS
-    PUSHBUTTON      "打开技能目录", IDC_PLUGIN_OPEN_SKILLS, 16, 396, 78, 19
-    PUSHBUTTON      "刷新状态", IDC_PLUGIN_REFRESH, 101, 396, 64, 19
-    PUSHBUTTON      "取消", IDCANCEL, 276, 396, 56, 19
-    DEFPUSHBUTTON   "保存并重启", IDOK, 338, 396, 68, 19
+    LTEXT           "咨询猫人设与安全规则由应用内置；这里只配置辅助能力。", -1, 14, 10, 392, 13
+    LTEXT           "设置会在保存后重启咨询助手，并校验实际辅助能力。", IDC_PLUGIN_RUNTIME_STATUS, 14, 32, 392, 13
+    AUTOCHECKBOX    "辅助技能库", IDC_PLUGIN_SKILLS, 16, 55, 170, 14, WS_TABSTOP
+    LTEXT           "加载咨询资料目录 .desktop-pet/skills 中的技能。", -1, 34, 71, 265, 12
+    RTEXT           "", IDC_PLUGIN_SKILLS_STATUS, 302, 56, 104, 12
+    AUTOCHECKBOX    "行动清单", IDC_PLUGIN_TODO, 16, 95, 170, 14, WS_TABSTOP
+    LTEXT           "启用行动清单，跟踪多步骤内容。", -1, 34, 111, 265, 12
+    RTEXT           "", IDC_PLUGIN_TODO_STATUS, 302, 96, 104, 12
+    AUTOCHECKBOX    "成长目标", IDC_PLUGIN_GOALS, 16, 135, 170, 14, WS_TABSTOP
+    LTEXT           "启用目标工具，持续跟进成长目标。", -1, 34, 151, 265, 12
+    RTEXT           "", IDC_PLUGIN_GOALS_STATUS, 302, 136, 104, 12
+    AUTOCHECKBOX    "资料搜索", IDC_PLUGIN_WEB_SEARCH, 16, 175, 190, 14, WS_TABSTOP
+    LTEXT           "复用现有 API Key；会产生额外模型调用和 Token 消耗。", -1, 34, 191, 265, 12
+    RTEXT           "", IDC_PLUGIN_WEB_SEARCH_STATUS, 302, 176, 104, 12
+    CONTROL         "", -1, "STATIC", SS_ETCHEDHORZ, 14, 215, 392, 1
+    LTEXT           "", IDC_PLUGIN_SKILL_SUMMARY, 16, 227, 390, 13, SS_LEFT | SS_ENDELLIPSIS
+    PUSHBUTTON      "打开技能目录", IDC_PLUGIN_OPEN_SKILLS, 16, 266, 78, 19
+    PUSHBUTTON      "刷新状态", IDC_PLUGIN_REFRESH, 101, 266, 64, 19
+    PUSHBUTTON      "取消", IDCANCEL, 276, 266, 56, 19
+    DEFPUSHBUTTON   "保存并重启", IDOK, 338, 266, 68, 19
 END
 
 IDD_WAITING_SETTINGS DIALOGEX 0, 0, 264, 88
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "等待召唤设置"
+CAPTION "陪伴等待设置"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
-    LTEXT           "连续无交互多少分钟后，让哈妮丝蹲坐等待？", -1, 10, 10, 244, 12
+    LTEXT           "连续无交互多少分钟后，让哈妮丝蹲坐陪伴等待？", -1, 10, 10, 244, 12
     EDITTEXT        IDC_WAITING_MINUTES, 10, 27, 244, 17, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
     LTEXT           "填写 0 可关闭；允许范围 0–1440 分钟。", -1, 10, 49, 244, 12
     DEFPUSHBUTTON   "保存", IDOK, 158, 66, 46, 15

@@ -122,8 +122,8 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .utilityWindow
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.title = "和哈妮丝聊聊"
-        panel.setAccessibilityTitle("和哈妮丝聊聊")
+        panel.title = "和哈妮丝开始本轮咨询"
+        panel.setAccessibilityTitle("和哈妮丝开始本轮咨询")
 
         let background = NSVisualEffectView()
         background.translatesAutoresizingMaskIntoConstraints = false
@@ -154,13 +154,13 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
         inputField.maximumNumberOfLines = 1
         inputField.lineBreakMode = .byTruncatingTail
         inputField.placeholderAttributedString = NSAttributedString(
-            string: "想问哈妮丝什么？",
+            string: "这次想聊些什么？",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 25, weight: .regular),
                 .foregroundColor: NSColor.white.withAlphaComponent(0.38)
             ]
         )
-        inputField.setAccessibilityLabel("DeepSeek 对话输入")
+        inputField.setAccessibilityLabel("心理咨询输入")
         inputField.setAccessibilityHelp("输入内容后按回车发送，按 Escape 取消")
 
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -209,7 +209,7 @@ final class ChatInputController: NSObject, NSTextFieldDelegate {
 
     private func updateContext(attachments: [String]) {
         if attachments.isEmpty {
-            hintLabel.stringValue = "↵ 发送    esc 取消    DeepSeek"
+            hintLabel.stringValue = "↵ 发送    esc 取消    心理咨询猫"
             inputField.setAccessibilityHelp("输入内容后按回车发送，按 Escape 取消")
             return
         }

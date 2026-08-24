@@ -37,7 +37,6 @@ final class PetController: NSObject {
     private let agentManager = AgentProcessManager()
     private let agentWorkspaceStore = AgentWorkspaceStore()
     private let agentPluginStore = AgentPluginSettingsStore()
-    private let agentPersonaStore = AgentPersonaSettingsStore()
     private let fileAnalysisStore = FileAnalysisSessionStore()
     private let agentPanel = AgentTaskPanelController()
     private let speechBubble = SpeechBubbleController()
@@ -50,6 +49,7 @@ final class PetController: NSObject {
     private var targetX: CGFloat?
     private var bubbleDismissAt: TimeInterval?
     private var conversationHistory: [DeepSeekMessage] = []
+    private var consultationHistory: [DeepSeekMessage] = []
     private var isRequestInFlight = false
     private var isAwaitingAgentApproval = false
     private var isDraggingPet = false
@@ -202,7 +202,7 @@ final class PetController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         let hasAPIKey = settingsStore.apiKey() != nil
         let alert = NSAlert()
-        alert.messageText = "DeepSeek 设置"
+        alert.messageText = "咨询模型设置（DeepSeek）"
         alert.informativeText = hasAPIKey
             ? "API Key 已配置。留空可保持原密钥不变；Token 范围为 1–384000，文件上限为 1–100 MB。"
             : "API Key 将安全保存在 macOS 钥匙串中；Token 范围为 1–384000，文件上限为 1–100 MB。"
@@ -235,9 +235,9 @@ final class PetController: NSObject {
 
         accessory.addSubview(label("API Key", y: 154))
         accessory.addSubview(label("模型", y: 120))
-        accessory.addSubview(label("Agent 最大输出 Token", y: 82))
-        accessory.addSubview(label("普通对话最大输出 Token", y: 46))
-        accessory.addSubview(label("单文件分析上限（MB）", y: 10))
+        accessory.addSubview(label("咨询助手最大输出 Token", y: 82))
+        accessory.addSubview(label("基础咨询最大输出 Token", y: 46))
+        accessory.addSubview(label("单份咨询资料上限（MB）", y: 10))
         accessory.addSubview(keyField)
         accessory.addSubview(modelPopup)
         accessory.addSubview(agentTokenField)
@@ -256,6 +256,7 @@ final class PetController: NSObject {
             do {
                 try settingsStore.clearAPIKey()
                 conversationHistory.removeAll()
+                consultationHistory.removeAll()
                 agentManager.shutdown()
                 resetAgentSession()
                 showSpeech("DeepSeek 密钥已清除。", duration: 4)
@@ -276,7 +277,7 @@ final class PetController: NSObject {
               let fileAnalysisMaxFileSizeMB = Int(fileLimitValue),
               FileAnalysisLimits.isValid(maxFileSizeMB: fileAnalysisMaxFileSizeMB)
         else {
-            showSpeech("Token 必须是 1 到 384000 的整数；单文件分析上限必须是 1 到 100 MB 的整数。", duration: 8)
+            showSpeech("Token 必须是 1 到 384000 的整数；单份咨询资料上限必须是 1 到 100 MB 的整数。", duration: 8)
             return
         }
 
@@ -294,7 +295,7 @@ final class PetController: NSObject {
             if settingsStore.apiKey() == nil {
                 showSpeech("还没有填写 API Key 哦。", duration: 5)
             } else {
-                showSpeech("DeepSeek 已配置好啦！连续点我三次就能聊天。", duration: 7)
+                showSpeech("咨询模型已配置好啦！连续点我三次就能开始本轮咨询。", duration: 7)
             }
         } catch {
             showError(error)
@@ -354,7 +355,7 @@ final class PetController: NSObject {
     @objc func selectAgentWorkspace() {
         recordUserInteraction()
         guard AgentProcessManager.platformSupported else {
-            showSpeech("当前系统不启用本地 Agent，将继续使用普通 DeepSeek 对话。", duration: 8)
+            showSpeech("当前系统不启用咨询助手，将继续使用基础咨询。", duration: 8)
             return
         }
         _ = chooseAgentWorkspace()
@@ -368,15 +369,63 @@ final class PetController: NSObject {
         activeFileAnalysisSession = nil
         agentWorkspaceStore.clear()
         resetAgentSession()
-        showSpeech("Agent 工作目录已清除，下次使用时会重新选择。", duration: 7)
+        showSpeech("咨询资料目录已清除，下次使用时会重新选择。", duration: 7)
     }
 
     @objc func newAgentConversation() {
         recordUserInteraction()
+        guard !isRequestInFlight, !isAwaitingAgentApproval, !isPreparingFileAnalysis else {
+            showSpeech("请先等待当前处理完成，再结束本轮咨询。", duration: 7)
+            return
+        }
+        guard !consultationHistory.isEmpty else {
+            showSpeech("本轮咨询还没有对话，不需要生成报告。", duration: 6)
+            return
+        }
+        guard let apiKey = settingsStore.apiKey() else {
+            showSpeech("请先配置咨询模型，才能生成本轮咨询报告。", duration: 7)
+            return
+        }
+
+        let history = consultationHistory
+        isRequestInFlight = true
+        showSpeech("正在整理本轮咨询并生成 PDF 报告…", duration: nil)
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let generated = try await self.deepSeekClient.reply(
+                    to: ConsultationReport.reportRequest,
+                    apiKey: apiKey,
+                    model: self.settingsStore.selectedModel,
+                    persona: ConsultationReport.reportSystemPrompt,
+                    history: history,
+                    maxOutputTokens: 4_096
+                )
+                let report = try ConsultationReport.parseGeneratedText(generated)
+                let url = try ConsultationReportPDFRenderer.render(report)
+                await MainActor.run {
+                    self.isRequestInFlight = false
+                    self.resetAfterConsultationReport()
+                    self.presentSavedConsultationReport(at: url)
+                }
+            } catch {
+                await MainActor.run {
+                    self.isRequestInFlight = false
+                    self.showSpeech(
+                        "咨询报告暂时没有生成：\(error.localizedDescription)\n本轮咨询仍然保留，可以稍后再次结束并重试。",
+                        duration: nil
+                    )
+                }
+            }
+        }
+    }
+
+    private func resetAfterConsultationReport() {
         agentPanel.cancelApproval()
         agentManager.shutdown()
-        isRequestInFlight = false
         isAwaitingAgentApproval = false
+        conversationHistory.removeAll()
+        consultationHistory.removeAll()
         if let fileSession = activeFileAnalysisSession {
             do {
                 activeFileAnalysisSession = try fileAnalysisStore.replaceAgentSessionID(for: fileSession)
@@ -387,13 +436,29 @@ final class PetController: NSObject {
         } else {
             resetAgentSession()
         }
-        showSpeech("新的 Agent 对话已经准备好啦。", duration: 5)
+    }
+
+    private func presentSavedConsultationReport(at url: URL) {
+        showSpeech(
+            "本轮咨询已结束，PDF 报告已保存到：\n\(url.path)",
+            duration: nil
+        )
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "本轮咨询报告已生成"
+        alert.informativeText = "报告已保存到：\n\(url.path)\n\n下次倾诉会开始新一轮咨询。"
+        alert.addButton(withTitle: "在 Finder 中显示")
+        alert.addButton(withTitle: "知道了")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 
     @objc func endFileAnalysis() {
         recordUserInteraction()
         guard activeFileAnalysisSession != nil else {
-            showSpeech("当前没有正在使用的文件分析会话。", duration: 5)
+            showSpeech("当前没有正在分析的咨询资料。", duration: 5)
             return
         }
         agentPanel.cancelApproval()
@@ -401,17 +466,17 @@ final class PetController: NSObject {
         fileAnalysisStore.endActiveSession()
         activeFileAnalysisSession = nil
         isRequestInFlight = false
-        showSpeech("文件分析已结束，之后会恢复普通 Agent 工作目录。", duration: 7)
+        showSpeech("咨询资料分析已结束，之后会回到常规咨询资料目录。", duration: 7)
     }
 
     @objc func clearFileAnalysisCache() {
         recordUserInteraction()
         guard !isRequestInFlight, !isAwaitingAgentApproval else {
-            showSpeech("请先等待当前 Agent 任务结束，再清除文件分析缓存。", duration: 7)
+            showSpeech("请先等待咨询助手完成当前处理，再清除咨询资料缓存。", duration: 7)
             return
         }
         guard let workspace = agentWorkspaceStore.workspaceURL() else {
-            showSpeech("请先选择 Agent 工作目录，再清除其中的文件分析缓存。", duration: 7)
+            showSpeech("请先选择咨询资料目录，再清除其中的资料分析缓存。", duration: 7)
             return
         }
         activateSecurityScopedWorkspace(workspace)
@@ -419,7 +484,7 @@ final class PetController: NSObject {
         do {
             try fileAnalysisStore.clearCache(in: workspace)
             activeFileAnalysisSession = nil
-            showSpeech("当前工作目录的文件分析缓存已经清除。", duration: 6)
+            showSpeech("当前咨询资料目录的分析缓存已经清除。", duration: 6)
         } catch {
             showError(error)
         }
@@ -439,23 +504,23 @@ final class PetController: NSObject {
               let workspace = currentAgentWorkspace,
               let apiKey = settingsStore.apiKey()
         else {
-            showSpeech("请先配置 API Key 并选择 Agent 工作目录。", duration: 7)
+            showSpeech("请先配置 API Key 并选择咨询资料目录。", duration: 7)
             return
         }
         activateSecurityScopedWorkspace(workspace)
-        showSpeech("正在重启 Agent…", duration: nil)
+        showSpeech("正在重启咨询助手…", duration: nil)
         agentManager.stopCurrentTask()
         agentManager.start(
             workspace: workspace,
             apiKey: apiKey,
             model: settingsStore.selectedModel,
             maxOutputTokens: settingsStore.agentMaxOutputTokens,
-            persona: agentPersonaStore.persona,
+            persona: AgentPersona.defaultText,
             plugins: agentPluginStore.configuration
         ) { [weak self] result in
             switch result {
             case .success:
-                self?.showSpeech("Agent 已重新启动", duration: 5)
+                self?.showSpeech("咨询助手已重新启动", duration: 5)
             case let .failure(error):
                 self?.showError(error)
             }
@@ -464,18 +529,17 @@ final class PetController: NSObject {
 
     @objc func showAgentStatus() {
         recordUserInteraction()
-        let workspace = currentAgentWorkspace?.path ?? "未选择工作目录"
+        let workspace = currentAgentWorkspace?.path ?? "未选择咨询资料目录"
         let fileContext = activeFileAnalysisSession.map {
-            "文件分析：\($0.displayNames.joined(separator: "、"))"
-        } ?? "文件分析：未启用"
+            "咨询资料：\($0.displayNames.joined(separator: "、"))"
+        } ?? "咨询资料：未启用"
         let configured = agentPluginStore.configuration
-        let personaStatus = agentPersonaStore.persona == AgentPersona.defaultText ? "默认" : "自定义"
         let actual = AgentPluginID.allCases
             .filter { agentManager.runtimePluginSnapshot?.isActive($0) == true }
             .map(\.title)
             .joined(separator: "、")
         showSpeech(
-            "\(agentManager.statusText)\n工作目录：\(workspace)\n\(fileContext)\n审批模式：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n猫咪人设：\(personaStatus)\n已配置：\(configured.displaySummary)\nHarness 实际启用：\(actual.isEmpty ? "未运行或无可选插件" : actual)",
+            "\(agentManager.statusText)\n咨询资料目录：\(workspace)\n\(fileContext)\n安全确认：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n咨询猫人设：内置且不可编辑\n辅助能力：\(configured.displaySummary)\n实际启用：\(actual.isEmpty ? "未运行或无可选能力" : actual)",
             duration: 12
         )
     }
@@ -483,23 +547,22 @@ final class PetController: NSObject {
     @objc func configureAgentSettings() {
         recordUserInteraction()
         guard AgentProcessManager.platformSupported else {
-            showSpeech("当前系统不启用本地 Agent 插件。", duration: 6)
+            showSpeech("当前系统不启用咨询助手的辅助能力。", duration: 6)
             return
         }
         guard !isRequestInFlight, !isAwaitingAgentApproval else {
-            showSpeech("请先等待当前 Agent 任务结束，再修改插件设置。", duration: 7)
+            showSpeech("请先等待咨询助手完成当前处理，再修改辅助能力设置。", duration: 7)
             return
         }
 
         let pluginWorkspace = currentAgentWorkspace
         if let pluginWorkspace { activateSecurityScopedWorkspace(pluginWorkspace) }
         agentPluginSettingsController.show(
-            persona: agentPersonaStore.persona,
             configuration: agentPluginStore.configuration,
             workspace: pluginWorkspace,
             runtimeSnapshot: agentManager.runtimePluginSnapshot
-        ) { [weak self] persona, configuration in
-            self?.applyAgentConfiguration(persona: persona, plugins: configuration)
+        ) { [weak self] configuration in
+            self?.applyAgentConfiguration(plugins: configuration)
         }
         agentManager.refreshPluginStatus { [weak self] result in
             if case let .success(snapshot) = result {
@@ -512,8 +575,8 @@ final class PetController: NSObject {
         recordUserInteraction()
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "等待召唤设置"
-        alert.informativeText = "连续多少分钟没有互动后，让哈妮丝蹲坐等待？填写 0 可关闭。"
+        alert.messageText = "陪伴等待设置"
+        alert.informativeText = "连续多少分钟没有互动后，让哈妮丝蹲坐陪伴等待？填写 0 可关闭。"
         let inputField = NSTextField(frame: CGRect(x: 0, y: 0, width: 260, height: 26))
         inputField.stringValue = String(waitingTimeoutMinutes)
         inputField.placeholderString = "分钟数（0–1440）"
@@ -531,7 +594,7 @@ final class PetController: NSObject {
         UserDefaults.standard.set(minutes, forKey: Self.waitingTimeoutDefaultsKey)
         recordUserInteraction()
         if minutes == 0 {
-            showSpeech("自动等待召唤已关闭。", duration: 5)
+            showSpeech("自动陪伴等待已关闭。", duration: 5)
         } else {
             showSpeech("好哒，\(minutes) 分钟没人理我，我就蹲下等你。", duration: 6)
         }
@@ -689,16 +752,23 @@ final class PetController: NSObject {
     private func showContextMenu(with event: NSEvent) {
         recordUserInteraction()
         let menu = NSMenu(title: "哈妮丝")
-        let chatItem = NSMenuItem(title: "开始 AI 对话…", action: #selector(startDeepSeekChat), keyEquivalent: "")
+        let chatItem = NSMenuItem(title: "开始本轮咨询…", action: #selector(startDeepSeekChat), keyEquivalent: "")
         chatItem.target = self
         menu.addItem(chatItem)
-        let settingsItem = NSMenuItem(title: "设置 DeepSeek…", action: #selector(configureDeepSeek), keyEquivalent: "")
+        let endConsultationItem = NSMenuItem(
+            title: "结束本轮咨询",
+            action: #selector(newAgentConversation),
+            keyEquivalent: ""
+        )
+        endConsultationItem.target = self
+        menu.addItem(endConsultationItem)
+        let settingsItem = NSMenuItem(title: "咨询模型设置…", action: #selector(configureDeepSeek), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
         if AgentProcessManager.platformSupported {
             menu.addItem(agentMenuItem())
         }
-        let waitingItem = NSMenuItem(title: "设置等待时间…", action: #selector(configureWaiting), keyEquivalent: "")
+        let waitingItem = NSMenuItem(title: "设置陪伴等待时间…", action: #selector(configureWaiting), keyEquivalent: "")
         waitingItem.target = self
         menu.addItem(waitingItem)
         menu.addItem(.separator())
@@ -717,7 +787,7 @@ final class PetController: NSObject {
         isRequestInFlight = true
         showSpeech("让我想一想…", duration: nil)
         let model = settingsStore.selectedModel
-        let persona = agentPersonaStore.persona
+        let persona = AgentPersona.defaultText
         let history = Array(conversationHistory.suffix(10))
         let maxOutputTokens = settingsStore.directChatMaxOutputTokens
 
@@ -736,6 +806,8 @@ final class PetController: NSObject {
                     self.isRequestInFlight = false
                     self.conversationHistory.append(DeepSeekMessage(role: "user", content: question))
                     self.conversationHistory.append(DeepSeekMessage(role: "assistant", content: answer))
+                    self.consultationHistory.append(DeepSeekMessage(role: "user", content: question))
+                    self.consultationHistory.append(DeepSeekMessage(role: "assistant", content: answer))
                     if self.conversationHistory.count > 12 {
                         self.conversationHistory.removeFirst(self.conversationHistory.count - 12)
                     }
@@ -746,7 +818,7 @@ final class PetController: NSObject {
                 await MainActor.run {
                     self.isRequestInFlight = false
                     if case let .outputLimitReached(partial) = error {
-                        self.showOutputLimitWarning(partial: partial, source: "普通对话")
+                        self.showOutputLimitWarning(partial: partial, source: "基础咨询")
                     } else {
                         self.showError(error)
                     }
@@ -763,11 +835,11 @@ final class PetController: NSObject {
     private func handleDroppedFiles(_ urls: [URL]) {
         recordUserInteraction()
         guard AgentProcessManager.platformSupported else {
-            showSpeech("当前系统不启用 Agent 文件分析。", duration: 7)
+            showSpeech("当前系统不启用咨询资料分析。", duration: 7)
             return
         }
         guard !isRequestInFlight, !isAwaitingAgentApproval, !isPreparingFileAnalysis else {
-            showSpeech("哈妮丝正在处理任务，请完成后再拖入文件。", duration: 6)
+            showSpeech("哈妮丝正在处理当前内容，请完成后再拖入咨询资料。", duration: 6)
             return
         }
         guard settingsStore.apiKey() != nil else {
@@ -784,7 +856,7 @@ final class PetController: NSObject {
         mood = .idle
         let limitMB = settingsStore.fileAnalysisMaxFileSizeMB
         showSpeech(
-            "正在本地解析 \(urls.count) 个文件…\n单文件不能超过 \(limitMB) MB；可在 DeepSeek 设置中修改。",
+            "正在本地解析 \(urls.count) 份咨询资料…\n单份资料不能超过 \(limitMB) MB；可在咨询模型设置中修改。",
             duration: nil
         )
 
@@ -844,7 +916,7 @@ final class PetController: NSObject {
         guard let apiKey = settingsStore.apiKey() else { return }
         activateSecurityScopedWorkspace(workspace)
         isRequestInFlight = true
-        showSpeech("哈妮丝 Agent 开始工作啦…", duration: 5)
+        showSpeech("哈妮丝咨询助手开始处理啦…", duration: 5)
         let prompt = fileSession.map { fileAnalysisPrompt(question: question, session: $0) } ?? question
         let requestedSessionID = sessionID ?? agentSessionID
         agentManager.start(
@@ -852,7 +924,7 @@ final class PetController: NSObject {
             apiKey: apiKey,
             model: settingsStore.selectedModel,
             maxOutputTokens: settingsStore.agentMaxOutputTokens,
-            persona: agentPersonaStore.persona,
+            persona: AgentPersona.defaultText,
             plugins: agentPluginStore.configuration
         ) { [weak self] result in
             guard let self else { return }
@@ -863,6 +935,8 @@ final class PetController: NSObject {
                     self.isRequestInFlight = false
                     switch promptResult {
                     case let .success(answer):
+                        self.consultationHistory.append(DeepSeekMessage(role: "user", content: question))
+                        self.consultationHistory.append(DeepSeekMessage(role: "assistant", content: answer))
                         self.showSpeech(answer, duration: 45)
                         self.petView.showAffection()
                     case let .failure(error):
@@ -879,7 +953,7 @@ final class PetController: NSObject {
                     self.offerDirectChatFallback(question: question, error: error)
                 } else {
                     self.showSpeech(
-                        "文件分析 Agent 暂时无法启动：\(error.localizedDescription)\n文件会话已保留，请稍后重试。",
+                        "咨询资料分析暂时无法启动：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
                         duration: nil
                     )
                 }
@@ -904,9 +978,9 @@ final class PetController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "本地 Agent 无法使用"
-        alert.informativeText = "\(error.localizedDescription)\n\n要改用普通 DeepSeek 对话回答这条问题吗？"
-        alert.addButton(withTitle: "使用普通对话")
+        alert.messageText = "咨询助手暂时无法使用"
+        alert.informativeText = "\(error.localizedDescription)\n\n要改用基础咨询继续回应吗？"
+        alert.addButton(withTitle: "使用基础咨询")
         alert.addButton(withTitle: "取消")
         if alert.runModal() == .alertFirstButtonReturn {
             sendToDeepSeek(question)
@@ -925,7 +999,7 @@ final class PetController: NSObject {
                 offerDirectChatFallback(question: question, error: error)
             } else {
                 showSpeech(
-                    "文件分析 Agent 通信失败：\(error.localizedDescription)\n文件会话已保留，请稍后重试。",
+                    "咨询资料分析通信失败：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
                     duration: nil
                 )
             }
@@ -933,15 +1007,15 @@ final class PetController: NSObject {
         }
         switch agentError {
         case .taskStopped:
-            showSpeech("任务已停止，Agent 已重置", duration: 6)
+            showSpeech("当前处理已停止，咨询助手已重置。", duration: 6)
         case let .outputLimitReached(partial):
-            showOutputLimitWarning(partial: partial, source: "Agent")
+            showOutputLimitWarning(partial: partial, source: "咨询助手")
         default:
             if allowsDirectFallback {
                 offerDirectChatFallback(question: question, error: error)
             } else {
                 showSpeech(
-                    "文件分析 Agent 出错：\(error.localizedDescription)\n文件会话已保留，请稍后重试。",
+                    "咨询资料分析出错：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
                     duration: nil
                 )
             }
@@ -949,7 +1023,7 @@ final class PetController: NSObject {
     }
 
     private func showOutputLimitWarning(partial: String, source: String) {
-        let warning = "⚠️ \(source) 已达到本轮最大输出 Token，以上内容可能不完整。请在 DeepSeek 设置中提高上限，或让我分段完成。"
+        let warning = "⚠️ \(source) 已达到本轮最大输出 Token，以上内容可能不完整。请在咨询模型设置中提高上限，或让我分段完成。"
         let text = partial.trimmingCharacters(in: .whitespacesAndNewlines)
         showSpeech(text.isEmpty ? warning : "\(text)\n\n---\n\(warning)", duration: nil)
     }
@@ -993,8 +1067,8 @@ final class PetController: NSObject {
     private func chooseAgentWorkspace() -> URL? {
         NSApp.activate(ignoringOtherApps: true)
         let picker = NSOpenPanel()
-        picker.title = "选择哈妮丝 Agent 工作目录"
-        picker.message = "Agent 只能读取和操作这个目录；写入和命令仍会逐次请求确认。"
+        picker.title = "选择哈妮丝咨询资料目录"
+        picker.message = "咨询助手只能读取和操作这个目录；写入和命令仍会逐次请求确认。"
         picker.prompt = "选择目录"
         picker.canChooseDirectories = true
         picker.canChooseFiles = false
@@ -1017,7 +1091,7 @@ final class PetController: NSObject {
                 activeFileAnalysisSession = fileAnalysisStore.activeSession(in: url)
             }
             resetAgentSession()
-            showSpeech("Agent 工作目录已设为：\(url.lastPathComponent)", duration: 7)
+            showSpeech("咨询资料目录已设为：\(url.lastPathComponent)", duration: 7)
             return url
         } catch {
             showError(error)
@@ -1025,38 +1099,31 @@ final class PetController: NSObject {
         }
     }
 
-    private func applyAgentConfiguration(persona: String, plugins: AgentPluginConfiguration) {
-        let savedPersona: String
-        do {
-            savedPersona = try agentPersonaStore.save(persona)
-            agentPluginStore.save(plugins)
-        } catch {
-            showError(error)
-            return
-        }
+    private func applyAgentConfiguration(plugins: AgentPluginConfiguration) {
+        agentPluginStore.save(plugins)
         conversationHistory.removeAll()
         resetAgentSession()
 
         guard let workspace = currentAgentWorkspace,
               let apiKey = settingsStore.apiKey()
         else {
-            showSpeech("Agent 配置已保存，将在下次启动 Agent 时生效。", duration: 7)
+            showSpeech("咨询助手设置已保存，将在下次启动时生效。", duration: 7)
             return
         }
 
         activateSecurityScopedWorkspace(workspace)
-        showSpeech("正在应用 Agent 配置…", duration: nil)
+        showSpeech("正在应用咨询助手设置…", duration: nil)
         agentManager.start(
             workspace: workspace,
             apiKey: apiKey,
             model: settingsStore.selectedModel,
             maxOutputTokens: settingsStore.agentMaxOutputTokens,
-            persona: savedPersona,
+            persona: AgentPersona.defaultText,
             plugins: plugins
         ) { [weak self] result in
             switch result {
             case .success:
-                self?.showSpeech("Agent 配置已生效：\(plugins.displaySummary)", duration: 8)
+                self?.showSpeech("咨询助手设置已生效：\(plugins.displaySummary)", duration: 8)
             case let .failure(error):
                 self?.showError(error)
             }
@@ -1095,24 +1162,23 @@ final class PetController: NSObject {
     }
 
     private func agentMenuItem() -> NSMenuItem {
-        let submenu = NSMenu(title: "本地 Agent")
+        let submenu = NSMenu(title: "咨询助手")
         let entries: [(String, Selector)] = [
-            ("选择 Agent 工作目录…", #selector(selectAgentWorkspace)),
-            ("清除 Agent 工作目录", #selector(clearAgentWorkspace)),
-            ("新建对话", #selector(newAgentConversation)),
-            ("停止当前任务", #selector(stopAgentTask)),
-            ("结束文件分析", #selector(endFileAnalysis)),
-            ("清除文件分析缓存", #selector(clearFileAnalysisCache)),
-            ("Agent 配置…", #selector(configureAgentSettings)),
-            ("重启 Agent", #selector(restartAgent)),
-            ("查看 Agent 状态", #selector(showAgentStatus))
+            ("选择咨询资料目录…", #selector(selectAgentWorkspace)),
+            ("清除咨询资料目录", #selector(clearAgentWorkspace)),
+            ("停止当前处理", #selector(stopAgentTask)),
+            ("结束咨询资料分析", #selector(endFileAnalysis)),
+            ("清除咨询资料缓存", #selector(clearFileAnalysisCache)),
+            ("咨询助手设置…", #selector(configureAgentSettings)),
+            ("重启咨询助手", #selector(restartAgent)),
+            ("查看咨询助手状态", #selector(showAgentStatus))
         ]
         for (title, action) in entries {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
             submenu.addItem(item)
         }
-        let root = NSMenuItem(title: "本地 Agent", action: nil, keyEquivalent: "")
+        let root = NSMenuItem(title: "咨询助手", action: nil, keyEquivalent: "")
         root.submenu = submenu
         return root
     }

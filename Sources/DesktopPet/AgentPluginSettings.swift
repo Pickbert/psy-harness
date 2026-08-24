@@ -8,23 +8,23 @@ enum AgentPluginID: String, CaseIterable, Codable {
 
     var title: String {
         switch self {
-        case .skills: return "本地技能库"
-        case .todo: return "任务清单"
-        case .goals: return "长期目标"
-        case .webSearch: return "DeepSeek 网页搜索"
+        case .skills: return "辅助技能库"
+        case .todo: return "行动清单"
+        case .goals: return "成长目标"
+        case .webSearch: return "资料搜索"
         }
     }
 
     var detail: String {
         switch self {
         case .skills:
-            return "加载所选工作区 .desktop-pet/skills 中的 SKILL.md，不扫描其他用户目录。"
+            return "加载咨询资料目录 .desktop-pet/skills 中的辅助技能，不扫描其他用户目录。"
         case .todo:
-            return "启用 Harness 的 todo_write，让 Agent 跟踪多步骤任务。"
+            return "启用行动清单，帮助咨询助手跟踪多步骤内容。"
         case .goals:
-            return "启用 create_goal、get_goal 和 update_goal，适合跨多轮任务。"
+            return "启用目标工具，适合跨多轮咨询持续跟进成长目标。"
         case .webSearch:
-            return "使用同一 DeepSeek API Key 调用官方搜索接口，会产生额外 Token 消耗。"
+            return "使用同一 DeepSeek API Key 搜索公开资料，会产生额外 Token 消耗。"
         }
     }
 
