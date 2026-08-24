@@ -55,6 +55,7 @@ final class PetController: NSObject {
     private var isDraggingPet = false
     private var isReceivingFileDrop = false
     private var isPreparingFileAnalysis = false
+    private var isModelSettingsPresented = false
     private var activeFileAnalysisSession: FileAnalysisSession?
     private var toolStatusGeneration = 0
     private var securityScopedWorkspace: URL?
@@ -251,7 +252,10 @@ final class PetController: NSObject {
         }
         alert.window.initialFirstResponder = keyField
 
+        isModelSettingsPresented = true
         let result = alert.runModal()
+        isModelSettingsPresented = false
+        lastTick = ProcessInfo.processInfo.systemUptime
         if result == .alertThirdButtonReturn {
             do {
                 try settingsStore.clearAPIKey()
@@ -652,7 +656,9 @@ final class PetController: NSObject {
         let now = ProcessInfo.processInfo.systemUptime
         let deltaTime = min(max(now - lastTick, 0), 0.05)
         lastTick = now
-        petView.update(deltaTime: deltaTime)
+        if !isModelSettingsPresented {
+            petView.update(deltaTime: deltaTime)
+        }
         if speechBubble.isVisible {
             speechBubble.reposition(anchoredTo: window)
         }
@@ -661,7 +667,8 @@ final class PetController: NSObject {
             self.bubbleDismissAt = nil
         }
 
-        guard !isPaused,
+        guard !isModelSettingsPresented,
+              !isPaused,
               !isAwaitingAgentApproval,
               !isDraggingPet,
               !isReceivingFileDrop,

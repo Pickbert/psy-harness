@@ -224,6 +224,7 @@ std::mt19937 g_random{std::random_device{}()};
 int g_petSize = 190;
 bool g_visible = true;
 bool g_paused = false;
+bool g_modelSettingsPresented = false;
 bool g_facingRight = true;
 bool g_dragging = false;
 bool g_didDrag = false;
@@ -1540,6 +1541,8 @@ INT_PTR CALLBACK DeepSeekSettingsDialogProcedure(HWND dialog, UINT message, WPAR
             SendMessageW(modelCombo, CB_SETCURSEL, ReadDeepSeekModel() == L"deepseek-v4-pro" ? 1 : 0, 0);
             SetDlgItemInt(dialog, IDC_FILE_LIMIT_MB, g_fileAnalysisMaxFileSizeMB, FALSE);
             EnableWindow(GetDlgItem(dialog, IDC_CLEAR_KEY), hasKey);
+            SetForegroundWindow(dialog);
+            SetActiveWindow(dialog);
             SetFocus(GetDlgItem(dialog, IDC_API_KEY));
             return FALSE;
         }
@@ -1586,14 +1589,23 @@ INT_PTR CALLBACK DeepSeekSettingsDialogProcedure(HWND dialog, UINT message, WPAR
 }
 
 bool ShowDeepSeekSettings() {
-    SetForegroundWindow(g_window);
-    return DialogBoxParamW(
+    if (g_modelSettingsPresented) {
+        return false;
+    }
+
+    g_modelSettingsPresented = true;
+    KillTimer(g_window, kAnimationTimer);
+    const INT_PTR result = DialogBoxParamW(
         g_instance,
         MAKEINTRESOURCEW(IDD_DEEPSEEK_SETTINGS),
         g_window,
         DeepSeekSettingsDialogProcedure,
         0
-    ) == IDOK;
+    );
+    g_modelSettingsPresented = false;
+    g_lastTick = std::chrono::steady_clock::now();
+    SetTimer(g_window, kAnimationTimer, 16, nullptr);
+    return result == IDOK;
 }
 
 INT_PTR CALLBACK WaitingSettingsDialogProcedure(HWND dialog, UINT message, WPARAM wParam, LPARAM) {
@@ -3117,6 +3129,10 @@ void ChooseNextAction() {
 }
 
 void TickAnimation() {
+    if (g_modelSettingsPresented) {
+        return;
+    }
+
     auto now = std::chrono::steady_clock::now();
     double deltaTime = std::chrono::duration<double>(now - g_lastTick).count();
     g_lastTick = now;
