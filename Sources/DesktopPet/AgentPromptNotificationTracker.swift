@@ -11,7 +11,7 @@ enum AgentPromptTrackingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notificationBufferOverflow:
-            return "咨询助手在确认问题入队前发送了过多通知。"
+            return "生涯规划助手在确认问题入队前发送了过多通知。"
         }
     }
 }

@@ -64,16 +64,16 @@ enum AgentRuntimeError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedPlatform: return "咨询助手仅支持 Apple Silicon、macOS 14 或更新版本。"
-        case .runtimeMissing: return "没有找到已打包的咨询助手组件。"
-        case .configurationMissing: return "没有找到哈妮丝咨询助手配置。"
-        case .notReady: return "咨询助手尚未就绪。"
-        case .busy: return "咨询助手正在处理上一项内容。"
-        case let .processExited(code): return "咨询助手已退出（状态码 \(code)）。"
-        case let .protocolError(message): return "咨询助手通信异常：\(message)"
-        case .noResponse: return "咨询助手没有返回可显示的文字。"
-        case .outputLimitReached: return "咨询助手已达到本轮最大输出 Token，当前回答可能不完整。"
-        case .taskStopped: return "咨询助手的当前处理已停止。"
+        case .unsupportedPlatform: return "生涯规划助手仅支持 Apple Silicon、macOS 14 或更新版本。"
+        case .runtimeMissing: return "没有找到已打包的生涯规划助手组件。"
+        case .configurationMissing: return "没有找到哈妮丝生涯规划助手配置。"
+        case .notReady: return "生涯规划助手尚未就绪。"
+        case .busy: return "生涯规划助手正在处理上一项内容。"
+        case let .processExited(code): return "生涯规划助手已退出（状态码 \(code)）。"
+        case let .protocolError(message): return "生涯规划助手通信异常：\(message)"
+        case .noResponse: return "生涯规划助手没有返回可显示的文字。"
+        case .outputLimitReached: return "生涯规划助手已达到本轮最大输出 Token，当前回答可能不完整。"
+        case .taskStopped: return "生涯规划助手的当前处理已停止。"
         }
     }
 }
@@ -137,9 +137,9 @@ final class AgentProcessManager {
 
     var statusText: String {
         queue.sync {
-            if !Self.platformSupported { return "当前平台不启用咨询助手" }
-            if process?.isRunning == true { return ready ? "咨询助手已就绪" : "咨询助手正在启动" }
-            return "咨询助手未运行"
+            if !Self.platformSupported { return "当前平台不启用生涯规划助手" }
+            if process?.isRunning == true { return ready ? "生涯规划助手已就绪" : "生涯规划助手正在启动" }
+            return "生涯规划助手未运行"
         }
     }
 
@@ -150,7 +150,7 @@ final class AgentProcessManager {
     var approvalModeText: String {
         queue.sync {
             approvalScope.allowsAllSafeOperations
-                ? "允许咨询助手本轮后续安全操作"
+                ? "允许生涯规划助手本轮后续安全操作"
                 : "逐次确认"
         }
     }
@@ -369,7 +369,7 @@ final class AgentProcessManager {
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             let redacted = text.replacingOccurrences(of: config.apiKey, with: "[REDACTED]")
-            self?.emitActivity("咨询助手：\(redacted.trimmingCharacters(in: .whitespacesAndNewlines))")
+            self?.emitActivity("生涯规划助手：\(redacted.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
         child.terminationHandler = { [weak self] process in
             self?.queue.async { self?.processTerminatedLocked(code: process.terminationStatus) }
@@ -396,7 +396,7 @@ final class AgentProcessManager {
                     if case let .failure(error) = snapshotResult {
                         self.emitActivity("插件状态读取失败：\(error.localizedDescription)")
                     }
-                    self.emitActivity("咨询助手已连接：\(config.workspace.lastPathComponent)")
+                    self.emitActivity("生涯规划助手已连接：\(config.workspace.lastPathComponent)")
                     self.completeOnMain(completion, with: .success(()))
                 }
             case let .failure(error):
@@ -529,7 +529,7 @@ final class AgentProcessManager {
                 self.queue.async {
                     let wireDecision = self.approvalScope.resolve(decision)
                     if decision == .allowedAll {
-                        self.emitActivity("已允许咨询助手本轮后续所有安全操作；重启后恢复逐次确认")
+                        self.emitActivity("已允许生涯规划助手本轮后续所有安全操作；重启后恢复逐次确认")
                     }
                     if wireDecision == .allowedOnce {
                         self.emitToolExecutionState(.running(toolName: request.toolName))
@@ -651,7 +651,7 @@ final class AgentProcessManager {
         if activeCompletion != nil { finishActiveLocked(.failure(error)) }
         guard wasReady, !stopping, !restartedAfterCrash, let config = launchConfiguration else { return }
         restartedAfterCrash = true
-        emitActivity("咨询助手意外退出，正在尝试恢复…")
+        emitActivity("生涯规划助手意外退出，正在尝试恢复…")
         do {
             try launchLocked(config: config) { result in
                 if case let .failure(error) = result { self.emitActivity(error.localizedDescription) }
@@ -859,14 +859,14 @@ final class AgentProcessManager {
             if let message, !message.isEmpty {
                 return code.map { "\(message)（\($0)）" } ?? message
             }
-            return "咨询助手本轮处理异常结束"
+            return "生涯规划助手本轮处理异常结束"
         }
         switch kind {
-        case "max-tokens": return "咨询助手已达到本轮最大输出长度。"
-        case "interrupted": return "咨询助手上一轮处理曾被中断。"
-        case "aborted": return "咨询助手的当前处理已中止。"
-        case "disposed": return "咨询助手会话已关闭。"
-        default: return "咨询助手本轮处理结束（\(kind)）。"
+        case "max-tokens": return "生涯规划助手已达到本轮最大输出长度。"
+        case "interrupted": return "生涯规划助手上一轮处理曾被中断。"
+        case "aborted": return "生涯规划助手的当前处理已中止。"
+        case "disposed": return "生涯规划助手会话已关闭。"
+        default: return "生涯规划助手本轮处理结束（\(kind)）。"
         }
     }
 

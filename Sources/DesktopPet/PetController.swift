@@ -203,7 +203,7 @@ final class PetController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         let hasAPIKey = settingsStore.apiKey() != nil
         let alert = NSAlert()
-        alert.messageText = "咨询模型设置（DeepSeek）"
+        alert.messageText = "职业咨询模型设置（DeepSeek）"
         alert.informativeText = hasAPIKey
             ? "API Key 已配置。留空可保持原密钥不变；Token 范围为 1–384000，文件上限为 1–100 MB。"
             : "API Key 将安全保存在 macOS 钥匙串中；Token 范围为 1–384000，文件上限为 1–100 MB。"
@@ -236,9 +236,9 @@ final class PetController: NSObject {
 
         accessory.addSubview(label("API Key", y: 154))
         accessory.addSubview(label("模型", y: 120))
-        accessory.addSubview(label("咨询助手最大输出 Token", y: 82))
-        accessory.addSubview(label("基础咨询最大输出 Token", y: 46))
-        accessory.addSubview(label("单份咨询资料上限（MB）", y: 10))
+        accessory.addSubview(label("生涯规划助手最大输出 Token", y: 82))
+        accessory.addSubview(label("基础生涯咨询最大输出 Token", y: 46))
+        accessory.addSubview(label("单份生涯资料上限（MB）", y: 10))
         accessory.addSubview(keyField)
         accessory.addSubview(modelPopup)
         accessory.addSubview(agentTokenField)
@@ -281,7 +281,7 @@ final class PetController: NSObject {
               let fileAnalysisMaxFileSizeMB = Int(fileLimitValue),
               FileAnalysisLimits.isValid(maxFileSizeMB: fileAnalysisMaxFileSizeMB)
         else {
-            showSpeech("Token 必须是 1 到 384000 的整数；单份咨询资料上限必须是 1 到 100 MB 的整数。", duration: 8)
+            showSpeech("Token 必须是 1 到 384000 的整数；单份生涯资料上限必须是 1 到 100 MB 的整数。", duration: 8)
             return
         }
 
@@ -299,7 +299,7 @@ final class PetController: NSObject {
             if settingsStore.apiKey() == nil {
                 showSpeech("还没有填写 API Key 哦。", duration: 5)
             } else {
-                showSpeech("咨询模型已配置好啦！连续点我三次就能开始本轮咨询。", duration: 7)
+                showSpeech("职业咨询模型已配置好啦！连续点我三次就能开始本轮生涯规划。", duration: 7)
             }
         } catch {
             showError(error)
@@ -359,7 +359,7 @@ final class PetController: NSObject {
     @objc func selectAgentWorkspace() {
         recordUserInteraction()
         guard AgentProcessManager.platformSupported else {
-            showSpeech("当前系统不启用咨询助手，将继续使用基础咨询。", duration: 8)
+            showSpeech("当前系统不启用生涯规划助手，将继续使用基础生涯咨询。", duration: 8)
             return
         }
         _ = chooseAgentWorkspace()
@@ -373,27 +373,27 @@ final class PetController: NSObject {
         activeFileAnalysisSession = nil
         agentWorkspaceStore.clear()
         resetAgentSession()
-        showSpeech("咨询资料目录已清除，下次使用时会重新选择。", duration: 7)
+        showSpeech("生涯资料目录已清除，下次使用时会重新选择。", duration: 7)
     }
 
     @objc func newAgentConversation() {
         recordUserInteraction()
         guard !isRequestInFlight, !isAwaitingAgentApproval, !isPreparingFileAnalysis else {
-            showSpeech("请先等待当前处理完成，再结束本轮咨询。", duration: 7)
+            showSpeech("请先等待当前处理完成，再结束本轮生涯规划。", duration: 7)
             return
         }
         guard !consultationHistory.isEmpty else {
-            showSpeech("本轮咨询还没有对话，不需要生成报告。", duration: 6)
+            showSpeech("本轮生涯规划还没有对话，不需要生成报告。", duration: 6)
             return
         }
         guard let apiKey = settingsStore.apiKey() else {
-            showSpeech("请先配置咨询模型，才能生成本轮咨询报告。", duration: 7)
+            showSpeech("请先配置职业咨询模型，才能生成本轮生涯规划报告。", duration: 7)
             return
         }
 
         let history = consultationHistory
         isRequestInFlight = true
-        showSpeech("正在整理本轮咨询并生成 PDF 报告…", duration: nil)
+        showSpeech("正在整理本轮生涯规划并生成 PDF 报告…", duration: nil)
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -416,7 +416,7 @@ final class PetController: NSObject {
                 await MainActor.run {
                     self.isRequestInFlight = false
                     self.showSpeech(
-                        "咨询报告暂时没有生成：\(error.localizedDescription)\n本轮咨询仍然保留，可以稍后再次结束并重试。",
+                        "生涯规划报告暂时没有生成：\(error.localizedDescription)\n本轮生涯规划仍然保留，可以稍后再次结束并重试。",
                         duration: nil
                     )
                 }
@@ -444,14 +444,14 @@ final class PetController: NSObject {
 
     private func presentSavedConsultationReport(at url: URL) {
         showSpeech(
-            "本轮咨询已结束，PDF 报告已保存到：\n\(url.path)",
+            "本轮生涯规划已结束，PDF 报告已保存到：\n\(url.path)",
             duration: nil
         )
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "本轮咨询报告已生成"
-        alert.informativeText = "报告已保存到：\n\(url.path)\n\n下次倾诉会开始新一轮咨询。"
+        alert.messageText = "本轮生涯规划报告已生成"
+        alert.informativeText = "报告已保存到：\n\(url.path)\n\n下次对话会开始新一轮生涯规划。"
         alert.addButton(withTitle: "在 Finder 中显示")
         alert.addButton(withTitle: "知道了")
         if alert.runModal() == .alertFirstButtonReturn {
@@ -462,7 +462,7 @@ final class PetController: NSObject {
     @objc func endFileAnalysis() {
         recordUserInteraction()
         guard activeFileAnalysisSession != nil else {
-            showSpeech("当前没有正在分析的咨询资料。", duration: 5)
+            showSpeech("当前没有正在分析的生涯资料。", duration: 5)
             return
         }
         agentPanel.cancelApproval()
@@ -470,17 +470,17 @@ final class PetController: NSObject {
         fileAnalysisStore.endActiveSession()
         activeFileAnalysisSession = nil
         isRequestInFlight = false
-        showSpeech("咨询资料分析已结束，之后会回到常规咨询资料目录。", duration: 7)
+        showSpeech("生涯资料分析已结束，之后会回到常规生涯资料目录。", duration: 7)
     }
 
     @objc func clearFileAnalysisCache() {
         recordUserInteraction()
         guard !isRequestInFlight, !isAwaitingAgentApproval else {
-            showSpeech("请先等待咨询助手完成当前处理，再清除咨询资料缓存。", duration: 7)
+            showSpeech("请先等待生涯规划助手完成当前处理，再清除生涯资料缓存。", duration: 7)
             return
         }
         guard let workspace = agentWorkspaceStore.workspaceURL() else {
-            showSpeech("请先选择咨询资料目录，再清除其中的资料分析缓存。", duration: 7)
+            showSpeech("请先选择生涯资料目录，再清除其中的资料分析缓存。", duration: 7)
             return
         }
         activateSecurityScopedWorkspace(workspace)
@@ -488,7 +488,7 @@ final class PetController: NSObject {
         do {
             try fileAnalysisStore.clearCache(in: workspace)
             activeFileAnalysisSession = nil
-            showSpeech("当前咨询资料目录的分析缓存已经清除。", duration: 6)
+            showSpeech("当前生涯资料目录的分析缓存已经清除。", duration: 6)
         } catch {
             showError(error)
         }
@@ -508,11 +508,11 @@ final class PetController: NSObject {
               let workspace = currentAgentWorkspace,
               let apiKey = settingsStore.apiKey()
         else {
-            showSpeech("请先配置 API Key 并选择咨询资料目录。", duration: 7)
+            showSpeech("请先配置 API Key 并选择生涯资料目录。", duration: 7)
             return
         }
         activateSecurityScopedWorkspace(workspace)
-        showSpeech("正在重启咨询助手…", duration: nil)
+        showSpeech("正在重启生涯规划助手…", duration: nil)
         agentManager.stopCurrentTask()
         agentManager.start(
             workspace: workspace,
@@ -524,7 +524,7 @@ final class PetController: NSObject {
         ) { [weak self] result in
             switch result {
             case .success:
-                self?.showSpeech("咨询助手已重新启动", duration: 5)
+                self?.showSpeech("生涯规划助手已重新启动", duration: 5)
             case let .failure(error):
                 self?.showError(error)
             }
@@ -533,17 +533,17 @@ final class PetController: NSObject {
 
     @objc func showAgentStatus() {
         recordUserInteraction()
-        let workspace = currentAgentWorkspace?.path ?? "未选择咨询资料目录"
+        let workspace = currentAgentWorkspace?.path ?? "未选择生涯资料目录"
         let fileContext = activeFileAnalysisSession.map {
-            "咨询资料：\($0.displayNames.joined(separator: "、"))"
-        } ?? "咨询资料：未启用"
+            "生涯资料：\($0.displayNames.joined(separator: "、"))"
+        } ?? "生涯资料：未启用"
         let configured = agentPluginStore.configuration
         let actual = AgentPluginID.allCases
             .filter { agentManager.runtimePluginSnapshot?.isActive($0) == true }
             .map(\.title)
             .joined(separator: "、")
         showSpeech(
-            "\(agentManager.statusText)\n咨询资料目录：\(workspace)\n\(fileContext)\n安全确认：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n咨询猫人设：内置且不可编辑\n辅助能力：\(configured.displaySummary)\n实际启用：\(actual.isEmpty ? "未运行或无可选能力" : actual)",
+            "\(agentManager.statusText)\n生涯资料目录：\(workspace)\n\(fileContext)\n安全确认：\(agentManager.approvalModeText)\n最大输出 Token：\(settingsStore.agentMaxOutputTokens)\n职业咨询猫人设：内置且不可编辑\n辅助能力：\(configured.displaySummary)\n实际启用：\(actual.isEmpty ? "未运行或无可选能力" : actual)",
             duration: 12
         )
     }
@@ -551,11 +551,11 @@ final class PetController: NSObject {
     @objc func configureAgentSettings() {
         recordUserInteraction()
         guard AgentProcessManager.platformSupported else {
-            showSpeech("当前系统不启用咨询助手的辅助能力。", duration: 6)
+            showSpeech("当前系统不启用生涯规划助手的辅助能力。", duration: 6)
             return
         }
         guard !isRequestInFlight, !isAwaitingAgentApproval else {
-            showSpeech("请先等待咨询助手完成当前处理，再修改辅助能力设置。", duration: 7)
+            showSpeech("请先等待生涯规划助手完成当前处理，再修改辅助能力设置。", duration: 7)
             return
         }
 
@@ -759,17 +759,17 @@ final class PetController: NSObject {
     private func showContextMenu(with event: NSEvent) {
         recordUserInteraction()
         let menu = NSMenu(title: "哈妮丝")
-        let chatItem = NSMenuItem(title: "开始本轮咨询…", action: #selector(startDeepSeekChat), keyEquivalent: "")
+        let chatItem = NSMenuItem(title: "开始本轮生涯规划…", action: #selector(startDeepSeekChat), keyEquivalent: "")
         chatItem.target = self
         menu.addItem(chatItem)
         let endConsultationItem = NSMenuItem(
-            title: "结束本轮咨询",
+            title: "结束本轮生涯规划",
             action: #selector(newAgentConversation),
             keyEquivalent: ""
         )
         endConsultationItem.target = self
         menu.addItem(endConsultationItem)
-        let settingsItem = NSMenuItem(title: "咨询模型设置…", action: #selector(configureDeepSeek), keyEquivalent: "")
+        let settingsItem = NSMenuItem(title: "职业咨询模型设置…", action: #selector(configureDeepSeek), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
         if AgentProcessManager.platformSupported {
@@ -825,7 +825,7 @@ final class PetController: NSObject {
                 await MainActor.run {
                     self.isRequestInFlight = false
                     if case let .outputLimitReached(partial) = error {
-                        self.showOutputLimitWarning(partial: partial, source: "基础咨询")
+                        self.showOutputLimitWarning(partial: partial, source: "基础生涯咨询")
                     } else {
                         self.showError(error)
                     }
@@ -842,11 +842,11 @@ final class PetController: NSObject {
     private func handleDroppedFiles(_ urls: [URL]) {
         recordUserInteraction()
         guard AgentProcessManager.platformSupported else {
-            showSpeech("当前系统不启用咨询资料分析。", duration: 7)
+            showSpeech("当前系统不启用生涯资料分析。", duration: 7)
             return
         }
         guard !isRequestInFlight, !isAwaitingAgentApproval, !isPreparingFileAnalysis else {
-            showSpeech("哈妮丝正在处理当前内容，请完成后再拖入咨询资料。", duration: 6)
+            showSpeech("哈妮丝正在处理当前内容，请完成后再拖入生涯资料。", duration: 6)
             return
         }
         guard settingsStore.apiKey() != nil else {
@@ -863,7 +863,7 @@ final class PetController: NSObject {
         mood = .idle
         let limitMB = settingsStore.fileAnalysisMaxFileSizeMB
         showSpeech(
-            "正在本地解析 \(urls.count) 份咨询资料…\n单份资料不能超过 \(limitMB) MB；可在咨询模型设置中修改。",
+            "正在本地解析 \(urls.count) 份生涯资料…\n单份资料不能超过 \(limitMB) MB；可在职业咨询模型设置中修改。",
             duration: nil
         )
 
@@ -923,7 +923,7 @@ final class PetController: NSObject {
         guard let apiKey = settingsStore.apiKey() else { return }
         activateSecurityScopedWorkspace(workspace)
         isRequestInFlight = true
-        showSpeech("哈妮丝咨询助手开始处理啦…", duration: 5)
+        showSpeech("哈妮丝生涯规划助手开始处理啦…", duration: 5)
         let prompt = fileSession.map { fileAnalysisPrompt(question: question, session: $0) } ?? question
         let requestedSessionID = sessionID ?? agentSessionID
         agentManager.start(
@@ -960,7 +960,7 @@ final class PetController: NSObject {
                     self.offerDirectChatFallback(question: question, error: error)
                 } else {
                     self.showSpeech(
-                        "咨询资料分析暂时无法启动：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
+                        "生涯资料分析暂时无法启动：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
                         duration: nil
                     )
                 }
@@ -985,9 +985,9 @@ final class PetController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "咨询助手暂时无法使用"
-        alert.informativeText = "\(error.localizedDescription)\n\n要改用基础咨询继续回应吗？"
-        alert.addButton(withTitle: "使用基础咨询")
+        alert.messageText = "生涯规划助手暂时无法使用"
+        alert.informativeText = "\(error.localizedDescription)\n\n要改用基础生涯咨询继续回应吗？"
+        alert.addButton(withTitle: "使用基础生涯咨询")
         alert.addButton(withTitle: "取消")
         if alert.runModal() == .alertFirstButtonReturn {
             sendToDeepSeek(question)
@@ -1006,7 +1006,7 @@ final class PetController: NSObject {
                 offerDirectChatFallback(question: question, error: error)
             } else {
                 showSpeech(
-                    "咨询资料分析通信失败：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
+                    "生涯资料分析通信失败：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
                     duration: nil
                 )
             }
@@ -1014,15 +1014,15 @@ final class PetController: NSObject {
         }
         switch agentError {
         case .taskStopped:
-            showSpeech("当前处理已停止，咨询助手已重置。", duration: 6)
+            showSpeech("当前处理已停止，生涯规划助手已重置。", duration: 6)
         case let .outputLimitReached(partial):
-            showOutputLimitWarning(partial: partial, source: "咨询助手")
+            showOutputLimitWarning(partial: partial, source: "生涯规划助手")
         default:
             if allowsDirectFallback {
                 offerDirectChatFallback(question: question, error: error)
             } else {
                 showSpeech(
-                    "咨询资料分析出错：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
+                    "生涯资料分析出错：\(error.localizedDescription)\n资料会话已保留，请稍后重试。",
                     duration: nil
                 )
             }
@@ -1030,7 +1030,7 @@ final class PetController: NSObject {
     }
 
     private func showOutputLimitWarning(partial: String, source: String) {
-        let warning = "⚠️ \(source) 已达到本轮最大输出 Token，以上内容可能不完整。请在咨询模型设置中提高上限，或让我分段完成。"
+        let warning = "⚠️ \(source) 已达到本轮最大输出 Token，以上内容可能不完整。请在职业咨询模型设置中提高上限，或让我分段完成。"
         let text = partial.trimmingCharacters(in: .whitespacesAndNewlines)
         showSpeech(text.isEmpty ? warning : "\(text)\n\n---\n\(warning)", duration: nil)
     }
@@ -1074,8 +1074,8 @@ final class PetController: NSObject {
     private func chooseAgentWorkspace() -> URL? {
         NSApp.activate(ignoringOtherApps: true)
         let picker = NSOpenPanel()
-        picker.title = "选择哈妮丝咨询资料目录"
-        picker.message = "咨询助手只能读取和操作这个目录；写入和命令仍会逐次请求确认。"
+        picker.title = "选择哈妮丝生涯资料目录"
+        picker.message = "生涯规划助手只能读取和操作这个目录；写入和命令仍会逐次请求确认。"
         picker.prompt = "选择目录"
         picker.canChooseDirectories = true
         picker.canChooseFiles = false
@@ -1098,7 +1098,7 @@ final class PetController: NSObject {
                 activeFileAnalysisSession = fileAnalysisStore.activeSession(in: url)
             }
             resetAgentSession()
-            showSpeech("咨询资料目录已设为：\(url.lastPathComponent)", duration: 7)
+            showSpeech("生涯资料目录已设为：\(url.lastPathComponent)", duration: 7)
             return url
         } catch {
             showError(error)
@@ -1114,12 +1114,12 @@ final class PetController: NSObject {
         guard let workspace = currentAgentWorkspace,
               let apiKey = settingsStore.apiKey()
         else {
-            showSpeech("咨询助手设置已保存，将在下次启动时生效。", duration: 7)
+            showSpeech("生涯规划助手设置已保存，将在下次启动时生效。", duration: 7)
             return
         }
 
         activateSecurityScopedWorkspace(workspace)
-        showSpeech("正在应用咨询助手设置…", duration: nil)
+        showSpeech("正在应用生涯规划助手设置…", duration: nil)
         agentManager.start(
             workspace: workspace,
             apiKey: apiKey,
@@ -1130,7 +1130,7 @@ final class PetController: NSObject {
         ) { [weak self] result in
             switch result {
             case .success:
-                self?.showSpeech("咨询助手设置已生效：\(plugins.displaySummary)", duration: 8)
+                self?.showSpeech("生涯规划助手设置已生效：\(plugins.displaySummary)", duration: 8)
             case let .failure(error):
                 self?.showError(error)
             }
@@ -1169,23 +1169,23 @@ final class PetController: NSObject {
     }
 
     private func agentMenuItem() -> NSMenuItem {
-        let submenu = NSMenu(title: "咨询助手")
+        let submenu = NSMenu(title: "生涯规划助手")
         let entries: [(String, Selector)] = [
-            ("选择咨询资料目录…", #selector(selectAgentWorkspace)),
-            ("清除咨询资料目录", #selector(clearAgentWorkspace)),
+            ("选择生涯资料目录…", #selector(selectAgentWorkspace)),
+            ("清除生涯资料目录", #selector(clearAgentWorkspace)),
             ("停止当前处理", #selector(stopAgentTask)),
-            ("结束咨询资料分析", #selector(endFileAnalysis)),
-            ("清除咨询资料缓存", #selector(clearFileAnalysisCache)),
-            ("咨询助手设置…", #selector(configureAgentSettings)),
-            ("重启咨询助手", #selector(restartAgent)),
-            ("查看咨询助手状态", #selector(showAgentStatus))
+            ("结束生涯资料分析", #selector(endFileAnalysis)),
+            ("清除生涯资料缓存", #selector(clearFileAnalysisCache)),
+            ("生涯规划助手设置…", #selector(configureAgentSettings)),
+            ("重启生涯规划助手", #selector(restartAgent)),
+            ("查看生涯规划助手状态", #selector(showAgentStatus))
         ]
         for (title, action) in entries {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
             submenu.addItem(item)
         }
-        let root = NSMenuItem(title: "咨询助手", action: nil, keyEquivalent: "")
+        let root = NSMenuItem(title: "生涯规划助手", action: nil, keyEquivalent: "")
         root.submenu = submenu
         return root
     }

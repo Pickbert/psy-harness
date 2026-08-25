@@ -57,7 +57,7 @@ enum FileAnalysisError: LocalizedError, Equatable {
         case let .unsupportedType(name):
             return "暂不支持“\(name)”的文件格式。"
         case let .fileTooLarge(name, limitMB):
-            return "“\(name)”超过单份咨询资料 \(limitMB) MB 限制；可在咨询模型设置中修改。"
+            return "“\(name)”超过单份生涯资料 \(limitMB) MB 限制；可在职业咨询模型设置中修改。"
         case .batchTooLarge:
             return "这一批文件总大小超过 100 MB。"
         case .extractedTextTooLarge:
@@ -77,7 +77,7 @@ enum FileAnalysisError: LocalizedError, Equatable {
         case let .emptyDocument(name):
             return "“\(name)”没有可分析的文字内容。"
         case .invalidSession:
-            return "咨询资料分析会话已经失效，请重新拖入资料。"
+            return "生涯资料分析会话已经失效，请重新拖入资料。"
         }
     }
 }
@@ -414,7 +414,7 @@ final class FileAnalysisSessionStore {
 
     private func writeManifest(_ metadata: FileAnalysisSessionMetadata, in sessionURL: URL) throws {
         var lines = [
-            "# 哈妮丝咨询资料分析会话",
+            "# 哈妮丝生涯资料分析会话",
             "",
             "这是一份由用户主动拖入文件后建立的隔离副本。请优先使用 `glob`、`grep` 和 `read` 检索 `chunks/`，需要连续上下文时再读取 `normalized/`。不要猜测未解析的图片内容。",
             "",

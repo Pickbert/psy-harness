@@ -24,7 +24,7 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
         skillSummaryLabel = NSTextField(labelWithString: "")
         super.init()
 
-        window.title = "哈妮丝 · 咨询助手设置"
+        window.title = "哈妮丝 · 生涯规划助手设置"
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -44,8 +44,8 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
             checkboxes[plugin]?.state = configuration.isEnabled(plugin) ? .on : .off
         }
         statusLabel.stringValue = runtimeSnapshot == nil
-            ? "咨询助手当前未运行；保存后将在下次启动时加载所选辅助能力。"
-            : "状态来自正在运行的咨询助手组件。"
+            ? "生涯规划助手当前未运行；保存后将在下次启动时加载所选辅助能力。"
+            : "状态来自正在运行的生涯规划助手组件。"
         refreshSkillSummary()
         refreshRuntimeLabels()
         NSApp.activate(ignoringOtherApps: true)
@@ -56,8 +56,8 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
     func updateRuntimeSnapshot(_ snapshot: AgentRuntimePluginSnapshot?) {
         runtimeSnapshot = snapshot
         statusLabel.stringValue = snapshot == nil
-            ? "暂时无法读取咨询辅助能力状态。"
-            : "已读取咨询助手实际启用的辅助能力。"
+            ? "暂时无法读取生涯规划辅助能力状态。"
+            : "已读取生涯规划助手实际启用的辅助能力。"
         refreshSkillSummary()
         refreshRuntimeLabels()
     }
@@ -67,12 +67,12 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
         content.autoresizingMask = [.width, .height]
         window.contentView = content
 
-        let title = NSTextField(labelWithString: "咨询助手设置")
+        let title = NSTextField(labelWithString: "生涯规划助手设置")
         title.font = .systemFont(ofSize: 24, weight: .bold)
         title.frame = CGRect(x: 28, y: 446, width: 260, height: 32)
         content.addSubview(title)
 
-        let subtitle = NSTextField(labelWithString: "咨询猫人设与安全规则由应用内置；这里只配置辅助能力。")
+        let subtitle = NSTextField(labelWithString: "职业咨询猫人设与安全规则由应用内置；这里只配置辅助能力。")
         subtitle.font = .systemFont(ofSize: 13)
         subtitle.textColor = .secondaryLabelColor
         subtitle.frame = CGRect(x: 28, y: 420, width: 620, height: 22)
@@ -166,11 +166,11 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
             let names = runtimeSnapshot.skillNames
             skillSummaryLabel.stringValue = names.isEmpty
                 ? "辅助技能已启用，当前目录中尚无有效技能。"
-                : "咨询助手已加载 \(names.count) 个技能：\(names.prefix(3).joined(separator: "、"))"
+                : "生涯规划助手已加载 \(names.count) 个技能：\(names.prefix(3).joined(separator: "、"))"
             return
         }
         guard workspace != nil else {
-            skillSummaryLabel.stringValue = "请先选择咨询资料目录，再管理辅助技能。"
+            skillSummaryLabel.stringValue = "请先选择生涯资料目录，再管理辅助技能。"
             return
         }
         let names = store.installedSkillNames(in: workspace)
@@ -191,7 +191,7 @@ final class AgentPluginSettingsController: NSObject, NSWindowDelegate {
             }
             let active = runtimeSnapshot.isActive(plugin)
             if active == selected {
-                runtimeLabels[plugin]?.stringValue = active ? "咨询助手已启用" : "已关闭"
+                runtimeLabels[plugin]?.stringValue = active ? "生涯规划助手已启用" : "已关闭"
                 runtimeLabels[plugin]?.textColor = active ? .systemGreen : .tertiaryLabelColor
             } else {
                 runtimeLabels[plugin]?.stringValue = "保存后重启"

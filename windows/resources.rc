@@ -24,14 +24,14 @@ IDI_APP_ICON ICON "windows/cat-icon.ico"
 
 IDD_DEEPSEEK_SETTINGS DIALOGEX 0, 0, 284, 166
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "咨询模型设置（DeepSeek）"
+CAPTION "职业咨询模型设置（DeepSeek）"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
     LTEXT           "API Key（安全保存到 Windows 凭据管理器）", -1, 10, 10, 264, 12
     EDITTEXT        IDC_API_KEY, 10, 25, 264, 16, ES_PASSWORD | ES_AUTOHSCROLL | WS_TABSTOP
     LTEXT           "模型", -1, 10, 51, 50, 12
     COMBOBOX        IDC_MODEL, 10, 65, 264, 70, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "咨询资料单份上限（1–100 MB）", -1, 10, 92, 180, 12
+    LTEXT           "生涯资料单份上限（1–100 MB）", -1, 10, 92, 180, 12
     EDITTEXT        IDC_FILE_LIMIT_MB, 196, 89, 78, 17, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
     LTEXT           "每批最多 5 个文件，总量和解析结果分别不超过 100 MB。", -1, 10, 114, 264, 12
     PUSHBUTTON      "清除密钥", IDC_CLEAR_KEY, 10, 141, 58, 15
@@ -41,7 +41,7 @@ END
 
 IDD_FILE_ANALYSIS_CHAT DIALOGEX 0, 0, 304, 76
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "让哈妮丝分析咨询资料"
+CAPTION "让哈妮丝分析生涯资料"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
     CONTROL         "", IDC_CHAT_ATTACHMENTS, "STATIC", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS | WS_BORDER, 10, 9, 284, 18
@@ -52,7 +52,7 @@ END
 
 IDD_DEEPSEEK_CHAT DIALOGEX 0, 0, 284, 50
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "和哈妮丝开始本轮咨询"
+CAPTION "和哈妮丝开始本轮生涯规划"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
     EDITTEXT        IDC_CHAT_INPUT, 10, 10, 218, 18, ES_AUTOHSCROLL | WS_TABSTOP
@@ -62,13 +62,13 @@ END
 
 IDD_AGENT_PLUGIN_SETTINGS DIALOGEX 0, 0, 420, 295
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "哈妮丝 · 咨询助手设置"
+CAPTION "哈妮丝 · 生涯规划助手设置"
 FONT 9, "Microsoft YaHei UI"
 BEGIN
-    LTEXT           "咨询猫人设与安全规则由应用内置；这里只配置辅助能力。", -1, 14, 10, 392, 13
-    LTEXT           "设置会在保存后重启咨询助手，并校验实际辅助能力。", IDC_PLUGIN_RUNTIME_STATUS, 14, 32, 392, 13
+    LTEXT           "职业咨询猫人设与安全规则由应用内置；这里只配置辅助能力。", -1, 14, 10, 392, 13
+    LTEXT           "设置会在保存后重启生涯规划助手，并校验实际辅助能力。", IDC_PLUGIN_RUNTIME_STATUS, 14, 32, 392, 13
     AUTOCHECKBOX    "辅助技能库", IDC_PLUGIN_SKILLS, 16, 55, 170, 14, WS_TABSTOP
-    LTEXT           "加载咨询资料目录 .desktop-pet/skills 中的技能。", -1, 34, 71, 265, 12
+    LTEXT           "加载生涯资料目录 .desktop-pet/skills 中的技能。", -1, 34, 71, 265, 12
     RTEXT           "", IDC_PLUGIN_SKILLS_STATUS, 302, 56, 104, 12
     AUTOCHECKBOX    "行动清单", IDC_PLUGIN_TODO, 16, 95, 170, 14, WS_TABSTOP
     LTEXT           "启用行动清单，跟踪多步骤内容。", -1, 34, 111, 265, 12
@@ -117,7 +117,7 @@ BEGIN
         BLOCK "080404B0"
         BEGIN
             VALUE "CompanyName", "DesktopPet"
-            VALUE "FileDescription", "哈妮丝 - Windows 桌面宠物"
+            VALUE "FileDescription", "哈妮丝 - 学生职业咨询猫"
             VALUE "FileVersion", "0.7.1"
             VALUE "InternalName", "DesktopPet"
             VALUE "OriginalFilename", "DesktopPet-Windows-x64.exe"

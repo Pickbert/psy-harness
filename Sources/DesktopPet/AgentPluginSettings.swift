@@ -18,11 +18,11 @@ enum AgentPluginID: String, CaseIterable, Codable {
     var detail: String {
         switch self {
         case .skills:
-            return "加载咨询资料目录 .desktop-pet/skills 中的辅助技能，不扫描其他用户目录。"
+            return "加载生涯资料目录 .desktop-pet/skills 中的辅助技能，不扫描其他用户目录。"
         case .todo:
-            return "启用行动清单，帮助咨询助手跟踪多步骤内容。"
+            return "启用行动清单，帮助生涯规划助手跟踪多步骤内容。"
         case .goals:
-            return "启用目标工具，适合跨多轮咨询持续跟进成长目标。"
+            return "启用目标工具，适合跨多轮生涯规划持续跟进成长目标。"
         case .webSearch:
             return "使用同一 DeepSeek API Key 搜索公开资料，会产生额外 Token 消耗。"
         }

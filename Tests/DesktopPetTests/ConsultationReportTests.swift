@@ -3,30 +3,30 @@ import XCTest
 @testable import DesktopPet
 
 final class ConsultationReportTests: XCTestCase {
-    func testReportPromptDoesNotInferVisitorIdentity() {
-        XCTAssertTrue(ConsultationReport.reportSystemPrompt.contains("不得出现任何来访者姓名"))
-        XCTAssertTrue(ConsultationReport.reportSystemPrompt.contains("统一使用“来访者”"))
+    func testReportPromptDoesNotInferStudentIdentity() {
+        XCTAssertTrue(ConsultationReport.reportSystemPrompt.contains("不得出现任何学生姓名"))
+        XCTAssertTrue(ConsultationReport.reportSystemPrompt.contains("统一使用“学生”"))
         XCTAssertTrue(ConsultationReport.reportSystemPrompt.contains("不得从历史残留"))
     }
 
     func testParsesEveryStandardSectionInFixedOrder() throws {
         let generated = """
         <<<TOPIC>>>
-        工作压力与休息冲突
+        专业选择与职业方向探索
         <<<SUMMARY>>>
-        来访者感到疲惫，同时担心停下来会落后。
+        学生正在比较计算机与工业设计，计划半年内确定申请方向。
         <<<NEEDS>>>
-        希望获得安全感和可持续的节奏。
+        喜欢解决实际问题，重视创造性与稳定成长。
         <<<RESOURCES>>>
-        已有稳定同事支持，也曾成功安排过短休息。
+        已了解两类专业课程，并有编程和绘画项目经验。
         <<<INSIGHTS>>>
-        把休息视为维持长期状态的一部分。
+        需要用真实项目体验比较两种方向，而不是只比较专业名称。
         <<<ACTIONS>>>
-        明天下午安排十分钟离开屏幕。
+        两周内各完成一个小型体验项目，并记录投入感和困难。
         <<<RISK>>>
-        本轮未见明确紧急风险信号；此项不是诊断结论。
+        目标院校课程与录取要求仍需通过官方网站核实。
         <<<SUPPORT>>>
-        如困扰持续影响睡眠和工作，可考虑寻求专业支持。
+        可邀请老师、家长和相关专业在读学生提供反馈。
         """
 
         let report = try ConsultationReport.parseGeneratedText(
@@ -35,7 +35,7 @@ final class ConsultationReportTests: XCTestCase {
         )
 
         XCTAssertEqual(report.sections.map(\.title), ConsultationReport.sectionDefinitions.map(\.title))
-        XCTAssertEqual(report.sections.first?.content, "工作压力与休息冲突")
+        XCTAssertEqual(report.sections.first?.content, "专业选择与职业方向探索")
         XCTAssertEqual(report.sections.count, 8)
     }
 
@@ -62,8 +62,8 @@ final class ConsultationReportTests: XCTestCase {
         let pdf = try XCTUnwrap(PDFDocument(url: output))
         XCTAssertGreaterThanOrEqual(pdf.pageCount, 1)
         let text = (0..<pdf.pageCount).compactMap { pdf.page(at: $0)?.string }.joined(separator: "\n")
-        XCTAssertTrue(text.contains("哈妮丝心理咨询报告"))
-        XCTAssertTrue(text.contains("本轮咨询主题"))
-        XCTAssertTrue(text.contains("不构成心理或医学诊断"))
+        XCTAssertTrue(text.contains("哈妮丝生涯规划报告"))
+        XCTAssertTrue(text.contains("生涯议题与所处阶段"))
+        XCTAssertTrue(text.contains("不构成升学、录取、实习或就业保证"))
     }
 }

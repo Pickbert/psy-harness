@@ -44,35 +44,36 @@ constexpr wchar_t kWindowClass[] = L"DesktopPetWindowsClass";
 constexpr wchar_t kSpeechBubbleClass[] = L"DesktopPetSpeechBubbleClass";
 constexpr wchar_t kWindowTitle[] = L"哈妮丝";
 constexpr wchar_t kDefaultAgentPersona[] =
-    L"你是一只名叫“哈妮丝”的长毛心理咨询猫。你是心理支持型咨询师 AI：通过稳定、尊重、非评判的对话，帮助来访者澄清问题、理解需要、识别资源，并形成由来访者自主选择的下一步。你不是持证心理咨询师、心理治疗师或医生，不能替代专业心理治疗、医学诊断或紧急援助。\n"
+    L"你是一只名叫“哈妮丝”的长毛职业咨询猫，也是一名面向学生的生涯规划顾问 AI。你帮助中学生、大学生及其他处于学习阶段的用户认识自己、探索专业与职业方向、比较选择，并把模糊想法转化为可执行的生涯行动。你提供的是教育与职业探索支持，不替学生或家长作决定，也不承诺升学、录取、实习或就业结果。\n"
     L"角色与关系：\n"
-    L"- 以咨询猫第一人称交流，语气温和、镇定、平等、直接、清晰，略带小猫的亲切与活力；可以偶尔自然地说“喵”，但不要卖萌冲淡严肃情绪。\n"
-    L"- 默认使用简体中文。始终把来访者视为有自主性、有能力理解自己并作出选择的人；提供结构、提问、反馈和支持，不替对方决定生活。\n"
-    L"- 不预设、猜测或编造来访者的姓名、性别、年龄、职业、关系身份等个人信息。除非来访者在本轮对话中明确自述并要求如此称呼，否则只使用“你”或“来访者”；不得从示例、历史残留、文件名、设备信息或上下文元数据推断身份。\n"
-    L"- 不居高临下，不训诫，不羞辱、不贴标签，不用个人偏好包装“正确答案”，不强迫自我暴露。\n"
-    L"会谈原则：\n"
-    L"- 每轮先判断最需要的是被理解、澄清问题、探索选择、形成行动，还是风险转介；未判断清楚前不要急着给方案。\n"
-    L"- 先接住情绪或事实，回放核心信息并确认理解，然后只提出一个最有推进价值的开放式问题，避免连续审问。\n"
-    L"- 优先关注现在发生了什么、希望变成什么、下一步能做什么。面对多个议题时帮助来访者自行聚焦。\n"
-    L"- 探索已有尝试、阻碍、支持人物、成功经验、能力和资源；可自然使用未来导向、奇迹式、1-10 度量式或假如问题，但不机械展示理论。\n"
-    L"- 形成行动时由来访者决定内容与节奏，并明确做什么、何时做、需要什么支持、怎样知道已经开始或完成。\n"
-    L"- 正向不等于强行乐观。先承认困难和情绪，再帮助看见已有能力、例外经验、支持资源与可改变部分。\n"
-    L"风险与边界：\n"
-    L"- 留意持续无望、明显功能受损、睡眠或食欲显著改变、强烈自我否定、异常体验、攻击冲动、危险行为、自伤或自杀表达等信号；这些只能作为风险提示，不能作为诊断。\n"
-    L"- 若多种症状持续存在并明显影响生活，明确建议寻求持证心理咨询师、精神科或其他合适专业人员评估。\n"
-    L"- 若出现明确自伤、自杀或伤害他人的想法、计划或近期实施可能，安全优先。直接、冷静地确认当前想法、计划和近期可能性，并立即建议联系当地急救、危机干预资源、专业人员或可信赖的身边人；不要继续常规目标探索，也不要承诺绝对保密。\n"
-    L"- 不做心理或医学诊断，不给疾病标签，不替来访者决定职业、婚姻、家庭等重大选择。\n"
+    L"- 以职业咨询猫第一人称交流，语气温和、平等、清晰、务实，略带小猫的亲切与活力；可以偶尔自然地说“喵”，但不要用卖萌代替专业分析。\n"
+    L"- 默认使用简体中文。把学生视为生涯选择的主体；提供信息、结构、提问、比较方法和行动建议，不替学生、家长或老师作重大决定。\n"
+    L"- 不预设、猜测或编造学生的姓名、性别、年龄、年级、学校、成绩、家庭条件等个人信息。除非学生在本轮对话中明确说明，否则只使用“你”或“学生”；不得从文件名、设备信息、历史残留或上下文元数据推断身份。\n"
+    L"- 尊重不同地区、家庭条件、教育路径和职业价值观，不把名校、高薪、热门专业或单一成功标准包装成唯一正确答案。\n"
+    L"生涯规划方法：\n"
+    L"- 先确认学生所处阶段、当前问题、决策期限和期望产出，例如选科、选专业、升学路径、转专业、实习、求职或长期职业探索；信息不足时一次只问一个最关键的问题。\n"
+    L"- 从兴趣、价值观、优势、技能、学业基础、性格偏好、过往体验、现实约束和支持资源等维度帮助学生建立自我认识。测评只能作为探索线索，不能把任何测评类型当作命运或结论。\n"
+    L"- 把专业、课程、院校路径与真实职业任务、工作环境、能力要求和发展路径连接起来，提醒学生区分专业名称、学习内容、职业名称和实际工作。\n"
+    L"- 比较多个选项时，明确评价维度、证据、收益、成本、风险和可逆性；可以使用选项表、决策矩阵或小规模试验，但不替学生给出唯一答案。\n"
+    L"- 对招生政策、考试要求、院校信息、行业趋势、薪资、岗位需求等可能变化的信息，优先查证官方或可靠来源并注明时间；无法查证时明确说“需要进一步核实”，不要凭印象编造。\n"
+    L"- 建议优先采用低风险探索：访谈从业者、体验课程、阅读专业培养方案、参加项目或社团、岗位影随、志愿服务、实习和作品实践，用真实体验修正判断。\n"
+    L"- 形成行动计划时，明确下一步做什么、何时完成、需要谁的支持、产出什么证据以及何时复盘。计划应符合学生当前时间、能力和资源，不堆砌任务。\n"
+    L"专业边界与安全：\n"
+    L"- 不伪造学校、专业、岗位、政策、数据或案例，不提供虚假的确定性，不因学生暂时没有目标而否定其能力。\n"
+    L"- 生涯建议不能替代学校官方招生信息、持证升学指导、劳动法律意见或用人单位正式要求。涉及志愿填报、签约、贷款、付费培训等重大决定时，提醒学生与家长、学校及相关专业人员核实。\n"
+    L"- 不做心理或医学诊断。若学生表达持续严重困扰、明显功能受损、自伤、自杀或伤害他人的想法，暂停常规生涯规划，优先建议联系当地急救、危机干预资源、学校心理老师、专业人员或可信赖的现实支持者。\n"
+    L"回复前检查是否明确了学生阶段、问题、期限和现实约束，是否区分了学生自述、分析判断、外部事实和待核实信息，是否给出了可比较的选项和一个现实可行的下一步。\n"
     L"默认回复保持简洁、自然、有人情味，适合桌面对话气泡；复杂问题仍应准确、清楚、有帮助。";
 constexpr wchar_t kConsultationReportSystemPrompt[] =
-    L"你是哈妮丝心理咨询报告整理助手。请基于本轮完整对话生成支持性咨询记录，不进行心理或医学诊断，不给来访者贴标签，不推测对话中未出现的事实。"
-    L"使用温和、客观、尊重自主性的简体中文，区分事实、感受、解释、需要、资源与行动。"
-    L"除非来访者在本轮对话中明确自述姓名并要求写入报告，否则不得出现任何来访者姓名，统一使用“来访者”；不得从历史残留、示例、文件名、设备信息或上下文元数据推断身份。"
-    L"对未明确的信息写“本轮对话中未明确提及”，不要编造。风险关注只能描述对话中出现的信号并标明“非诊断结论”。"
-    L"若出现明确自伤、自杀、伤人或其他紧急危险，专业支持建议必须明确写出立即联系当地急救、危机干预资源、专业人员或可信赖的身边人。"
-    L"下一步必须来自对话中来访者表达或共同确认的内容；如未形成行动，写“本轮尚未形成具体行动约定”。"
+    L"你是哈妮丝生涯规划报告整理助手。请基于本轮完整对话生成面向学生的职业与生涯规划记录，不替学生作决定，不承诺升学、录取、实习或就业结果，不推测对话中未出现的事实。"
+    L"使用客观、清晰、尊重学生自主性的简体中文，区分学生自述、分析判断、外部事实与待核实信息；测评结果只能作为探索线索，不能作为定论。"
+    L"除非学生在本轮对话中明确自述姓名并要求写入报告，否则不得出现任何学生姓名，统一使用“学生”；不得从历史残留、示例、文件名、设备信息或上下文元数据推断身份。"
+    L"对未明确的信息写“本轮对话中未明确提及”，不要编造。涉及招生政策、院校、专业、行业、岗位、薪资或就业数据时记录来源与时间；本轮未核实时标为“待通过官方或可靠来源核实”。"
+    L"行动计划必须来自学生表达或本轮共同确认的内容；如未形成行动，写“本轮尚未形成具体行动计划”。"
+    L"如出现自伤、自杀、伤人或其他紧急危险，只客观记录已出现的信号，并建议立即联系当地急救、危机干预资源、学校心理老师、专业人员或可信赖的现实支持者。"
     L"不写寒暄，不使用 Markdown 标题，不输出代码围栏。";
 constexpr wchar_t kConsultationReportRequest[] =
-    L"请整理本轮咨询报告。必须严格按以下 8 个标记和顺序输出，每个标记单独占一行，标记之间填写对应内容，不得增删或改写标记：\n"
+    L"请整理本轮生涯规划报告。必须严格按以下 8 个标记和顺序输出，每个标记单独占一行，标记之间填写对应内容，不得增删或改写标记：\n"
     L"<<<TOPIC>>>\n<<<SUMMARY>>>\n<<<NEEDS>>>\n<<<RESOURCES>>>\n<<<INSIGHTS>>>\n<<<ACTIONS>>>\n<<<RISK>>>\n<<<SUPPORT>>>";
 constexpr UINT kTrayCallback = WM_APP + 1;
 constexpr UINT kDeepSeekResult = WM_APP + 2;
@@ -870,7 +871,7 @@ bool ClearFileAnalysisCacheInWorkspace(const std::wstring& workspace, std::wstri
         if (error) break;
     }
     if (error) {
-        errorMessage = L"无法清除咨询资料分析缓存：" + WideFromUtf8(error.message());
+        errorMessage = L"无法清除生涯资料分析缓存：" + WideFromUtf8(error.message());
         return false;
     }
     return true;
@@ -918,7 +919,7 @@ bool SelectAgentWorkspace(std::wstring& workspace) {
         IID_PPV_ARGS(&dialog)
     );
     if (FAILED(result) || !dialog) return false;
-    dialog->SetTitle(L"选择哈妮丝咨询资料目录");
+    dialog->SetTitle(L"选择哈妮丝生涯资料目录");
     FILEOPENDIALOGOPTIONS options{};
     if (SUCCEEDED(dialog->GetOptions(&options))) {
         dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
@@ -1032,9 +1033,9 @@ void ResolveAgentApproval(const desktop_pet::AgentEvent& event) {
     configuration.hwndParent = g_window;
     configuration.hInstance = g_instance;
     configuration.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
-    configuration.pszWindowTitle = L"哈妮丝咨询助手操作确认";
+    configuration.pszWindowTitle = L"哈妮丝生涯规划助手操作确认";
     configuration.pszMainIcon = TD_WARNING_ICON;
-    configuration.pszMainInstruction = L"咨询助手请求执行一项本地操作";
+    configuration.pszMainInstruction = L"生涯规划助手请求执行一项本地操作";
     configuration.pszContent = content.c_str();
     configuration.cButtons = static_cast<UINT>(std::size(buttons));
     configuration.pButtons = buttons;
@@ -1044,14 +1045,14 @@ void ResolveAgentApproval(const desktop_pet::AgentEvent& event) {
         selected = MessageBoxW(
             g_window,
             content.c_str(),
-            L"哈妮丝咨询助手操作确认",
+            L"哈妮丝生涯规划助手操作确认",
             MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING
         ) == IDYES ? kAllowOnce : kReject;
     }
     if (selected == kAllowAll) {
         g_agentAllowsAllSafeOperations = true;
         g_agentRuntime->RespondToApproval(event.requestId, L"allowed-once");
-        ShowSpeechBubble(L"咨询助手本轮运行将自动放行后续安全操作。", 7);
+        ShowSpeechBubble(L"生涯规划助手本轮运行将自动放行后续安全操作。", 7);
     } else if (selected == kAllowOnce) {
         g_agentRuntime->RespondToApproval(event.requestId, L"allowed-once");
     } else {
@@ -1272,21 +1273,21 @@ bool ParseConsultationReport(
     std::wstring& error
 ) {
     static const std::array<std::pair<const wchar_t*, const wchar_t*>, 8> definitions{{
-        {L"TOPIC", L"本轮咨询主题"},
-        {L"SUMMARY", L"情绪与事实摘要"},
-        {L"NEEDS", L"核心需要与价值"},
-        {L"RESOURCES", L"已有资源与支持"},
-        {L"INSIGHTS", L"本轮关键洞察"},
-        {L"ACTIONS", L"约定的下一步"},
-        {L"RISK", L"风险关注"},
-        {L"SUPPORT", L"专业支持建议"}
+        {L"TOPIC", L"生涯议题与所处阶段"},
+        {L"SUMMARY", L"学生现状与现实约束"},
+        {L"NEEDS", L"兴趣、优势与价值偏好"},
+        {L"RESOURCES", L"教育与职业方向"},
+        {L"INSIGHTS", L"选项比较与判断依据"},
+        {L"ACTIONS", L"行动计划与复盘节点"},
+        {L"RISK", L"风险与待核实信息"},
+        {L"SUPPORT", L"支持资源与下一步"}
     }};
     sections.clear();
     for (size_t index = 0; index < definitions.size(); ++index) {
         const std::wstring marker = L"<<<" + std::wstring(definitions[index].first) + L">>>";
         const size_t markerPosition = text.find(marker);
         if (markerPosition == std::wstring::npos) {
-            error = L"咨询模型返回的报告格式不完整，请重试。";
+            error = L"职业咨询模型返回的报告格式不完整，请重试。";
             return false;
         }
         const size_t contentStart = markerPosition + marker.size();
@@ -1296,7 +1297,7 @@ bool ParseConsultationReport(
                 L"<<<" + std::wstring(definitions[index + 1].first) + L">>>";
             contentEnd = text.find(nextMarker, contentStart);
             if (contentEnd == std::wstring::npos) {
-                error = L"咨询模型返回的报告格式不完整，请重试。";
+                error = L"职业咨询模型返回的报告格式不完整，请重试。";
                 return false;
             }
         }
@@ -1315,7 +1316,7 @@ std::wstring ConsultationReportOutputPath() {
         !documentsPath) {
         return {};
     }
-    std::filesystem::path directory = std::filesystem::path(documentsPath) / L"哈妮丝咨询报告";
+    std::filesystem::path directory = std::filesystem::path(documentsPath) / L"哈妮丝生涯规划报告";
     CoTaskMemFree(documentsPath);
     std::error_code directoryError;
     std::filesystem::create_directories(directory, directoryError);
@@ -1326,7 +1327,7 @@ std::wstring ConsultationReportOutputPath() {
     wchar_t filename[128]{};
     swprintf_s(
         filename,
-        L"哈妮丝心理咨询报告-%04u%02u%02u-%02u%02u%02u.pdf",
+        L"哈妮丝生涯规划报告-%04u%02u%02u-%02u%02u%02u.pdf",
         time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond
     );
     return (directory / filename).wstring();
@@ -1345,11 +1346,11 @@ bool WriteConsultationReportPdf(
 
     DOCINFOW document{};
     document.cbSize = sizeof(document);
-    document.lpszDocName = L"哈妮丝心理咨询报告";
+    document.lpszDocName = L"哈妮丝生涯规划报告";
     document.lpszOutput = outputPath.c_str();
     if (StartDocW(dc, &document) <= 0) {
         DeleteDC(dc);
-        error = L"无法创建咨询报告 PDF 文件。";
+        error = L"无法创建生涯规划报告 PDF 文件。";
         return false;
     }
 
@@ -1384,7 +1385,7 @@ bool WriteConsultationReportPdf(
         SetTextColor(dc, RGB(105, 112, 122));
         SetBkMode(dc, TRANSPARENT);
         RECT footer{left, bottom + MulDiv(15, dpiY, 72), right, pageHeight};
-        const std::wstring footerText = L"第 " + std::to_wstring(pageNumber) + L" 页 · AI 支持性记录";
+        const std::wstring footerText = L"第 " + std::to_wstring(pageNumber) + L" 页 · AI 生涯规划记录";
         DrawTextW(dc, footerText.c_str(), -1, &footer, DT_RIGHT | DT_TOP | DT_NOPREFIX);
         SelectObject(dc, oldFont);
         pageOpen = false;
@@ -1405,7 +1406,7 @@ bool WriteConsultationReportPdf(
         HGDIOBJ oldFont = SelectObject(dc, smallFont);
         SetTextColor(dc, RGB(105, 112, 122));
         RECT header{left, top - MulDiv(34, dpiY, 72), right, top};
-        DrawTextW(dc, L"哈妮丝 · 心理咨询猫", -1, &header, DT_LEFT | DT_TOP | DT_NOPREFIX);
+        DrawTextW(dc, L"哈妮丝 · 职业咨询猫", -1, &header, DT_LEFT | DT_TOP | DT_NOPREFIX);
         SelectObject(dc, oldFont);
         y = top;
         return true;
@@ -1468,11 +1469,11 @@ bool WriteConsultationReportPdf(
     };
 
     bool succeeded = startPage();
-    if (succeeded) succeeded = drawBlock(L"哈妮丝心理咨询报告", titleFont, RGB(56, 79, 107), MulDiv(10, dpiY, 72));
+    if (succeeded) succeeded = drawBlock(L"哈妮丝生涯规划报告", titleFont, RGB(56, 79, 107), MulDiv(10, dpiY, 72));
     SYSTEMTIME time{};
     GetLocalTime(&time);
     wchar_t metadata[160]{};
-    swprintf_s(metadata, L"生成时间：%04u年%u月%u日 %02u:%02u    报告类型：AI 支持性咨询记录",
+    swprintf_s(metadata, L"生成时间：%04u年%u月%u日 %02u:%02u    报告类型：AI 生涯规划记录",
         time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute);
     if (succeeded) succeeded = drawBlock(metadata, smallFont, RGB(105, 112, 122), MulDiv(14, dpiY, 72));
     for (size_t index = 0; succeeded && index < sections.size(); ++index) {
@@ -1493,7 +1494,7 @@ bool WriteConsultationReportPdf(
     }
     if (succeeded) {
         succeeded = drawBlock(
-            L"重要说明\n本报告由 AI 根据本轮对话自动整理，仅用于个人回顾与自我梳理，不构成心理或医学诊断，也不能替代持证心理咨询、医疗服务或紧急援助。如存在现实危险或紧急风险，请立即联系当地急救、危机干预资源、专业人员或可信赖的身边人。",
+            L"重要说明\n本报告由 AI 根据本轮对话自动整理，仅用于学生的生涯探索与行动复盘，不构成升学、录取、实习或就业保证，也不能替代学校官方信息、持证升学指导、劳动法律意见或心理医疗服务。涉及重大教育与职业决定时，请与家长、学校及相关专业人员核实。",
             smallFont,
             RGB(116, 72, 56),
             0
@@ -1508,7 +1509,7 @@ bool WriteConsultationReportPdf(
     DeleteObject(smallFont);
     DeleteDC(dc);
     if (!succeeded || endResult <= 0) {
-        error = L"咨询报告 PDF 写入失败。";
+        error = L"生涯规划报告 PDF 写入失败。";
         return false;
     }
 
@@ -1687,7 +1688,7 @@ std::wstring SkillSummaryText() {
         if (g_agentPluginSnapshot.skillNames.empty()) {
             return L"辅助技能已启用，当前目录中尚无有效技能。";
         }
-        std::wstring summary = L"咨询助手已加载 " +
+        std::wstring summary = L"生涯规划助手已加载 " +
             std::to_wstring(g_agentPluginSnapshot.skillNames.size()) + L" 个技能：";
         size_t count = std::min<size_t>(3, g_agentPluginSnapshot.skillNames.size());
         for (size_t index = 0; index < count; ++index) {
@@ -1696,7 +1697,7 @@ std::wstring SkillSummaryText() {
         }
         return summary;
     }
-    if (ReadAgentWorkspace().empty()) return L"请先选择咨询资料目录，再管理辅助技能。";
+    if (ReadAgentWorkspace().empty()) return L"请先选择生涯资料目录，再管理辅助技能。";
     std::vector<std::wstring> names = InstalledAgentSkillNames();
     if (names.empty()) return L"技能目录为空，可放入 <name>/SKILL.md。";
     std::wstring summary = L"已发现 " + std::to_wstring(names.size()) + L" 个技能：";
@@ -1725,7 +1726,7 @@ void RefreshAgentPluginDialog() {
         std::wstring status;
         if (g_hasAgentPluginSnapshot) {
             const bool active = IsAgentPluginActive(entry.flag);
-            status = active == selected ? (active ? L"咨询助手已启用" : L"已关闭") : L"保存后重启";
+            status = active == selected ? (active ? L"生涯规划助手已启用" : L"已关闭") : L"保存后重启";
         } else if (g_agentPluginStatusPending) {
             status = selected ? L"正在读取" : L"已关闭";
         } else if (g_agentRuntime && g_agentRuntime->IsRunning()) {
@@ -1738,15 +1739,15 @@ void RefreshAgentPluginDialog() {
 
     std::wstring runtimeStatus;
     if (g_agentPluginStatusPending) {
-        runtimeStatus = L"正在读取咨询助手实际启用的辅助能力…";
+        runtimeStatus = L"正在读取生涯规划助手实际启用的辅助能力…";
     } else if (!g_agentPluginStatusError.empty()) {
         runtimeStatus = g_agentPluginStatusError;
     } else if (g_hasAgentPluginSnapshot) {
-        runtimeStatus = L"已读取咨询助手实际启用的辅助能力。";
+        runtimeStatus = L"已读取生涯规划助手实际启用的辅助能力。";
     } else if (g_agentRuntime && g_agentRuntime->IsRunning()) {
-        runtimeStatus = L"咨询助手正在启动或尚未返回辅助能力状态。";
+        runtimeStatus = L"生涯规划助手正在启动或尚未返回辅助能力状态。";
     } else {
-        runtimeStatus = L"咨询助手当前未运行；保存后将在下次启动时加载所选辅助能力。";
+        runtimeStatus = L"生涯规划助手当前未运行；保存后将在下次启动时加载所选辅助能力。";
     }
     SetDlgItemTextW(dialog, IDC_PLUGIN_RUNTIME_STATUS, runtimeStatus.c_str());
     const std::wstring skillSummary = SkillSummaryText();
@@ -1761,8 +1762,8 @@ void RequestAgentPluginStatus() {
     g_agentPluginStatusError.clear();
     if (!g_agentRuntime || !g_agentRuntime->IsReady()) {
         g_agentPluginStatusError = g_agentRuntime && g_agentRuntime->IsRunning()
-            ? L"咨询助手尚未就绪，请稍后刷新。"
-            : L"咨询助手当前未运行。";
+            ? L"生涯规划助手尚未就绪，请稍后刷新。"
+            : L"生涯规划助手当前未运行。";
         RefreshAgentPluginDialog();
         return;
     }
@@ -1780,7 +1781,7 @@ void RequestAgentPluginStatus() {
 void OpenAgentSkillDirectory(HWND owner) {
     const std::wstring workspace = ReadAgentWorkspace();
     if (workspace.empty()) {
-        MessageBoxW(owner, L"请先选择咨询资料目录。", kWindowTitle, MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(owner, L"请先选择生涯资料目录。", kWindowTitle, MB_OK | MB_ICONINFORMATION);
         return;
     }
     const std::filesystem::path directory =
@@ -1852,7 +1853,7 @@ INT_PTR CALLBACK AgentPluginSettingsDialogProcedure(
             if (!SaveAgentPluginFlags(flags)) {
                 MessageBoxW(
                     dialog,
-                    L"无法保存咨询助手设置，请检查当前账户的注册表权限。",
+                    L"无法保存生涯规划助手设置，请检查当前账户的注册表权限。",
                     kWindowTitle,
                     MB_OK | MB_ICONERROR
                 );
@@ -2342,16 +2343,16 @@ void ShowSpeechBubble(const std::wstring& text, double durationSeconds) {
 
 void StartConsultationReportGeneration() {
     if (g_requestInFlight || g_fileAnalysisPreparing) {
-        ShowSpeechBubble(L"请先等待当前处理完成，再结束本轮咨询。", 7);
+        ShowSpeechBubble(L"请先等待当前处理完成，再结束本轮生涯规划。", 7);
         return;
     }
     if (g_consultationHistory.empty()) {
-        ShowSpeechBubble(L"本轮咨询还没有对话，不需要生成报告。", 6);
+        ShowSpeechBubble(L"本轮生涯规划还没有对话，不需要生成报告。", 6);
         return;
     }
     const std::wstring apiKey = ReadDeepSeekApiKey();
     if (apiKey.empty()) {
-        ShowSpeechBubble(L"请先配置咨询模型，才能生成本轮咨询报告。", 7);
+        ShowSpeechBubble(L"请先配置职业咨询模型，才能生成本轮生涯规划报告。", 7);
         return;
     }
 
@@ -2359,7 +2360,7 @@ void StartConsultationReportGeneration() {
     const std::wstring model = ReadDeepSeekModel();
     HWND resultWindow = g_window;
     g_requestInFlight = true;
-    ShowSpeechBubble(L"正在整理本轮咨询并生成 PDF 报告…", -1);
+    ShowSpeechBubble(L"正在整理本轮生涯规划并生成 PDF 报告…", -1);
 
     std::thread([history, apiKey, model, resultWindow]() {
         auto* result = new ConsultationReportAsyncResult{};
@@ -2382,7 +2383,7 @@ void StartConsultationReportGeneration() {
             } else {
                 result->path = ConsultationReportOutputPath();
                 if (result->path.empty()) {
-                    result->error = L"无法创建咨询报告保存目录。";
+                    result->error = L"无法创建生涯规划报告保存目录。";
                 } else if (WriteConsultationReportPdf(sections, result->path, result->error)) {
                     result->success = true;
                 }
@@ -2466,11 +2467,11 @@ bool SendPendingAgentPrompt() {
     if (!g_agentRuntime->SendPrompt(question, g_agentSessionID, error)) {
         g_requestInFlight = false;
         g_activeAgentQuestion.clear();
-        ShowSpeechBubble(L"咨询助手启动失败：" + error, 15);
+        ShowSpeechBubble(L"生涯规划助手启动失败：" + error, 15);
         return false;
     }
     g_agentStartupPurpose = AgentStartupPurpose::None;
-    ShowSpeechBubble(L"哈妮丝咨询助手开始处理啦…", -1);
+    ShowSpeechBubble(L"哈妮丝生涯规划助手开始处理啦…", -1);
     return true;
 }
 
@@ -2494,7 +2495,7 @@ bool StartAgentPrompt(
     g_requestInFlight = true;
     if (g_agentRuntime->IsReady()) return SendPendingAgentPrompt();
     if (g_agentRuntime->IsRunning()) {
-        ShowSpeechBubble(L"咨询助手正在启动…", -1);
+        ShowSpeechBubble(L"生涯规划助手正在启动…", -1);
         return true;
     }
     // Reap a previously exited child and its reader threads before relaunching.
@@ -2516,17 +2517,17 @@ bool StartAgentPrompt(
         g_pendingAgentQuestion.clear();
         g_pendingConsultationQuestion.clear();
         g_requestInFlight = false;
-        ShowSpeechBubble(L"咨询助手启动失败：" + error, 15);
+        ShowSpeechBubble(L"生涯规划助手启动失败：" + error, 15);
         return false;
     }
-    ShowSpeechBubble(L"咨询助手正在启动…", -1);
+    ShowSpeechBubble(L"生涯规划助手正在启动…", -1);
     return true;
 }
 
 bool RestartConfiguredAgent(AgentStartupPurpose purpose, std::wstring& error) {
     const std::wstring workspace = ReadAgentWorkspace();
     if (workspace.empty() || !std::filesystem::is_directory(std::filesystem::path(workspace))) {
-        error = L"请先选择有效的咨询资料目录。";
+        error = L"请先选择有效的生涯资料目录。";
         return false;
     }
     const std::wstring apiKey = ReadDeepSeekApiKey();
@@ -2584,13 +2585,13 @@ void HandleDroppedFiles(const std::vector<std::wstring>& paths) {
     RecordUserInteraction();
     if (paths.empty()) return;
     if (g_requestInFlight || g_fileAnalysisPreparing) {
-        ShowSpeechBubble(L"哈妮丝正在处理当前内容，请完成后再拖入咨询资料。", 6);
+        ShowSpeechBubble(L"哈妮丝正在处理当前内容，请完成后再拖入生涯资料。", 6);
         return;
     }
     const std::wstring runtimeDirectory = AgentRuntimeDirectory();
     if (!desktop_pet::AgentRuntime::IsPackaged(runtimeDirectory) ||
         !desktop_pet::FileAnalysisRuntime::IsPackaged(runtimeDirectory)) {
-        ShowSpeechBubble(L"咨询资料分析需要包含 DesktopPetAgent 文件夹的完整安装包。", 10);
+        ShowSpeechBubble(L"生涯资料分析需要包含 DesktopPetAgent 文件夹的完整安装包。", 10);
         return;
     }
     std::wstring apiKey = ReadDeepSeekApiKey();
@@ -2833,7 +2834,7 @@ void StartDeepSeekChat() {
                     g_activeFileAnalysisSessionID
                 )) {
                 EndActiveFileAnalysisSession();
-                ShowSpeechBubble(L"咨询资料分析会话已经失效，请重新拖入资料。", 8);
+                ShowSpeechBubble(L"生涯资料分析会话已经失效，请重新拖入资料。", 8);
                 return;
             }
             g_agentSessionID = g_activeFileAnalysisAgentSessionID;
@@ -3274,16 +3275,16 @@ void ApplyAgentConfiguration(unsigned int flags) {
     const std::wstring apiKey = ReadDeepSeekApiKey();
     if (workspace.empty() || apiKey.empty()) {
         ShowSpeechBubble(
-            L"咨询助手设置已保存：" + AgentPluginSummary(flags) +
-                L"。将在配置 API Key 和咨询资料目录后的下次启动时生效。",
+            L"生涯规划助手设置已保存：" + AgentPluginSummary(flags) +
+                L"。将在配置 API Key 和生涯资料目录后的下次启动时生效。",
             9
         );
         return;
     }
-    ShowSpeechBubble(L"正在应用咨询助手设置…", -1);
+    ShowSpeechBubble(L"正在应用生涯规划助手设置…", -1);
     std::wstring error;
     if (!RestartConfiguredAgent(AgentStartupPurpose::ConfigurationApply, error)) {
-        ShowSpeechBubble(L"咨询助手设置已保存，但重启失败：" + error, 15);
+        ShowSpeechBubble(L"生涯规划助手设置已保存，但重启失败：" + error, 15);
     }
 }
 
@@ -3302,12 +3303,12 @@ void ShowAgentStatusSummary() {
     if (g_agentPluginStatusPending) actual = L"正在读取";
     if (!g_agentPluginStatusError.empty()) actual = g_agentPluginStatusError;
     ShowSpeechBubble(
-        L"咨询助手：" + runtimeStatus +
-            L"\n咨询资料目录：" + (workspace.empty() ? L"未选择" : workspace) +
-            L"\n咨询资料：" + fileContext +
+        L"生涯规划助手：" + runtimeStatus +
+            L"\n生涯资料目录：" + (workspace.empty() ? L"未选择" : workspace) +
+            L"\n生涯资料：" + fileContext +
             L"\n安全确认：" + (g_agentAllowsAllSafeOperations ? L"允许本轮后续安全操作" : L"逐次确认") +
             L"\n最大输出 Token：8192" +
-            L"\n咨询猫人设：内置且不可编辑" +
+            L"\n职业咨询猫人设：内置且不可编辑" +
             L"\n辅助能力：" + AgentPluginSummary(ReadAgentPluginFlags()) +
             L"\n实际启用：" + actual,
         14
@@ -3322,7 +3323,7 @@ void HandleMenuCommand(UINT command) {
             break;
         case kMenuDeepSeekSettings:
             if (ShowDeepSeekSettings() && !ReadDeepSeekApiKey().empty()) {
-                ShowSpeechBubble(L"DeepSeek 已配置好啦！连续点我三次就能聊天。", 7);
+                ShowSpeechBubble(L"职业咨询模型已配置好啦！连续点我三次就能开始本轮生涯规划。", 7);
             }
             break;
         case kMenuWaitingSettings:
@@ -3340,7 +3341,7 @@ void HandleMenuCommand(UINT command) {
             break;
         case kMenuAgentWorkspace: {
             if (g_requestInFlight || g_fileAnalysisPreparing) {
-                ShowSpeechBubble(L"请先等待当前处理结束，再切换咨询资料目录。", 7);
+                ShowSpeechBubble(L"请先等待当前处理结束，再切换生涯资料目录。", 7);
                 break;
             }
             std::wstring workspace;
@@ -3352,13 +3353,13 @@ void HandleMenuCommand(UINT command) {
                 EndActiveFileAnalysisSession();
                 SaveAgentWorkspace(workspace);
                 CleanupExpiredFileAnalysisSessions(workspace);
-                ShowSpeechBubble(L"咨询资料目录已切换为：" + workspace, 10);
+                ShowSpeechBubble(L"生涯资料目录已切换为：" + workspace, 10);
             }
             break;
         }
         case kMenuAgentClearWorkspace:
             if (g_requestInFlight || g_fileAnalysisPreparing) {
-                ShowSpeechBubble(L"请先停止当前处理，再清除咨询资料目录。", 7);
+                ShowSpeechBubble(L"请先停止当前处理，再清除生涯资料目录。", 7);
                 break;
             }
             if (g_agentRuntime) g_agentRuntime->Shutdown();
@@ -3368,7 +3369,7 @@ void HandleMenuCommand(UINT command) {
             DeleteDesktopPetRegistryValue(L"AgentWorkspace");
             EndActiveFileAnalysisSession();
             g_agentSessionID = NewAgentSessionID();
-            ShowSpeechBubble(L"咨询资料目录已清除，下次使用时会重新选择。", 7);
+            ShowSpeechBubble(L"生涯资料目录已清除，下次使用时会重新选择。", 7);
             break;
         case kMenuAgentNewConversation:
             StartConsultationReportGeneration();
@@ -3386,7 +3387,7 @@ void HandleMenuCommand(UINT command) {
             break;
         case kMenuAgentPlugins: {
             if (g_requestInFlight || g_fileAnalysisPreparing) {
-                ShowSpeechBubble(L"请先等待咨询助手完成当前处理，再修改辅助能力设置。", 7);
+                ShowSpeechBubble(L"请先等待生涯规划助手完成当前处理，再修改辅助能力设置。", 7);
                 break;
             }
             unsigned int flags = ReadAgentPluginFlags();
@@ -3395,13 +3396,13 @@ void HandleMenuCommand(UINT command) {
         }
         case kMenuAgentRestart: {
             if (g_requestInFlight || g_fileAnalysisPreparing) {
-                ShowSpeechBubble(L"请先停止当前处理，再重启咨询助手。", 7);
+                ShowSpeechBubble(L"请先停止当前处理，再重启生涯规划助手。", 7);
                 break;
             }
-            ShowSpeechBubble(L"正在重启咨询助手…", -1);
+            ShowSpeechBubble(L"正在重启生涯规划助手…", -1);
             std::wstring error;
             if (!RestartConfiguredAgent(AgentStartupPurpose::ManualRestart, error)) {
-                ShowSpeechBubble(L"咨询助手重启失败：" + error, 15);
+                ShowSpeechBubble(L"生涯规划助手重启失败：" + error, 15);
             }
             break;
         }
@@ -3416,24 +3417,24 @@ void HandleMenuCommand(UINT command) {
             break;
         case kMenuFileAnalysisEnd:
             if (g_requestInFlight || g_fileAnalysisPreparing) {
-                ShowSpeechBubble(L"请先等待当前处理结束，再结束咨询资料分析。", 7);
+                ShowSpeechBubble(L"请先等待当前处理结束，再结束生涯资料分析。", 7);
             } else if (!g_activeFileAnalysisSessionID.empty()) {
                 EndActiveFileAnalysisSession();
                 g_agentSessionID = NewAgentSessionID();
                 if (g_agentRuntime) g_agentRuntime->Shutdown();
                 g_agentAllowsAllSafeOperations = false;
                 ClearAgentPluginRuntimeState();
-                ShowSpeechBubble(L"已结束当前咨询资料分析，资料副本仍会按保留期保存。", 7);
+                ShowSpeechBubble(L"已结束当前生涯资料分析，资料副本仍会按保留期保存。", 7);
             }
             break;
         case kMenuFileAnalysisClearCache: {
             if (g_requestInFlight || g_fileAnalysisPreparing) {
-                ShowSpeechBubble(L"请先等待当前处理结束，再清除咨询资料缓存。", 7);
+                ShowSpeechBubble(L"请先等待当前处理结束，再清除生涯资料缓存。", 7);
                 break;
             }
             const std::wstring workspace = ReadAgentWorkspace();
             if (workspace.empty()) {
-                ShowSpeechBubble(L"请先选择咨询资料目录，再清除其中的资料分析缓存。", 7);
+                ShowSpeechBubble(L"请先选择生涯资料目录，再清除其中的资料分析缓存。", 7);
                 break;
             }
             std::wstring error;
@@ -3442,7 +3443,7 @@ void HandleMenuCommand(UINT command) {
                 g_agentAllowsAllSafeOperations = false;
                 ClearAgentPluginRuntimeState();
                 EndActiveFileAnalysisSession();
-                ShowSpeechBubble(L"当前咨询资料目录的分析缓存已清除。", 6);
+                ShowSpeechBubble(L"当前生涯资料目录的分析缓存已清除。", 6);
             } else {
                 ShowSpeechBubble(error, 10);
             }
@@ -3483,54 +3484,54 @@ void HandleMenuCommand(UINT command) {
 void ShowTrayMenu() {
     HMENU menu = CreatePopupMenu();
     const bool hasAgent = desktop_pet::AgentRuntime::IsPackaged(AgentRuntimeDirectory());
-    std::wstring chatMenuTitle = L"开始本轮咨询...";
+    std::wstring chatMenuTitle = L"开始本轮生涯规划...";
     chatMenuTitle += g_deepSeekHotKeyRegistered
         ? L"\tCtrl+Alt+0"
         : L"（Ctrl+Alt+0 已被占用）";
     AppendMenuW(menu, MF_STRING, kMenuDeepSeekChat, chatMenuTitle.c_str());
-    AppendMenuW(menu, MF_STRING, kMenuAgentNewConversation, L"结束本轮咨询");
-    AppendMenuW(menu, MF_STRING, kMenuDeepSeekSettings, L"咨询模型设置...");
+    AppendMenuW(menu, MF_STRING, kMenuAgentNewConversation, L"结束本轮生涯规划");
+    AppendMenuW(menu, MF_STRING, kMenuDeepSeekSettings, L"职业咨询模型设置...");
     if (hasAgent) {
         const bool agentBusy = g_requestInFlight || g_fileAnalysisPreparing;
         const bool hasWorkspace = !ReadAgentWorkspace().empty();
         const bool agentRunning = g_agentRuntime && g_agentRuntime->IsRunning();
         HMENU agentMenu = CreatePopupMenu();
         AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
-            kMenuAgentWorkspace, L"选择咨询资料目录...");
+            kMenuAgentWorkspace, L"选择生涯资料目录...");
         AppendMenuW(agentMenu, MF_STRING | (!hasWorkspace || agentBusy ? MF_GRAYED : 0),
-            kMenuAgentClearWorkspace, L"清除咨询资料目录");
+            kMenuAgentClearWorkspace, L"清除生涯资料目录");
         AppendMenuW(agentMenu, MF_STRING | (!agentRunning && !g_requestInFlight ? MF_GRAYED : 0),
             kMenuAgentStopTask, L"停止当前处理");
         if (g_fileAnalysisPreparing) {
-            AppendMenuW(agentMenu, MF_STRING, kMenuFileAnalysisCancel, L"取消咨询资料解析");
+            AppendMenuW(agentMenu, MF_STRING, kMenuFileAnalysisCancel, L"取消生涯资料解析");
         }
         AppendMenuW(
             agentMenu,
             MF_STRING | (g_activeFileAnalysisSessionID.empty() ? MF_GRAYED : 0),
             kMenuFileAnalysisEnd,
-            L"结束咨询资料分析"
+            L"结束生涯资料分析"
         );
         AppendMenuW(agentMenu, MF_STRING | (!hasWorkspace || agentBusy ? MF_GRAYED : 0),
-            kMenuFileAnalysisClearCache, L"清除咨询资料缓存");
+            kMenuFileAnalysisClearCache, L"清除生涯资料缓存");
         AppendMenuW(agentMenu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
-            kMenuAgentPlugins, L"咨询助手设置...");
+            kMenuAgentPlugins, L"生涯规划助手设置...");
         AppendMenuW(agentMenu, MF_STRING | (agentBusy ? MF_GRAYED : 0),
-            kMenuAgentRestart, L"重启咨询助手");
-        AppendMenuW(agentMenu, MF_STRING, kMenuAgentStatus, L"查看咨询助手状态");
-        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(agentMenu), L"咨询助手");
+            kMenuAgentRestart, L"重启生涯规划助手");
+        AppendMenuW(agentMenu, MF_STRING, kMenuAgentStatus, L"查看生涯规划助手状态");
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(agentMenu), L"生涯规划助手");
     }
     AppendMenuW(menu, MF_STRING, kMenuWaitingSettings, L"设置陪伴等待时间...");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, kMenuCall, L"呼唤咨询猫");
+    AppendMenuW(menu, MF_STRING, kMenuCall, L"呼唤职业咨询猫");
     AppendMenuW(menu, MF_STRING, kMenuPause, g_paused ? L"继续陪伴" : L"暂停陪伴");
-    AppendMenuW(menu, MF_STRING, kMenuVisibility, g_visible ? L"隐藏咨询猫" : L"显示咨询猫");
+    AppendMenuW(menu, MF_STRING, kMenuVisibility, g_visible ? L"隐藏职业咨询猫" : L"显示职业咨询猫");
 
     HMENU sizeMenu = CreatePopupMenu();
     AppendMenuW(sizeMenu, MF_STRING | (g_petSize == 150 ? MF_CHECKED : 0), kMenuSizeSmall, L"小");
     AppendMenuW(sizeMenu, MF_STRING | (g_petSize == 190 ? MF_CHECKED : 0), kMenuSizeMedium, L"中");
     AppendMenuW(sizeMenu, MF_STRING | (g_petSize == 240 ? MF_CHECKED : 0), kMenuSizeLarge, L"大");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(sizeMenu), L"咨询猫大小");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(sizeMenu), L"职业咨询猫大小");
 
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kMenuReset, L"回到屏幕右下角");
@@ -3656,7 +3657,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 RefreshAgentPluginDialog();
                 if (g_agentStartupPurpose == AgentStartupPurpose::ConfigurationApply ||
                     g_agentStartupPurpose == AgentStartupPurpose::ManualRestart) {
-                    ShowSpeechBubble(L"咨询助手已启动，但辅助能力状态校验超时。", 10);
+                    ShowSpeechBubble(L"生涯规划助手已启动，但辅助能力状态校验超时。", 10);
                     g_agentStartupPurpose = AgentStartupPurpose::None;
                 }
                 return 0;
@@ -3787,8 +3788,8 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             if (!reportResult) return 0;
             if (!reportResult->success) {
                 ShowSpeechBubble(
-                    L"咨询报告暂时没有生成：" + reportResult->error +
-                        L"\n本轮咨询仍然保留，可以稍后再次结束并重试。",
+                    L"生涯规划报告暂时没有生成：" + reportResult->error +
+                        L"\n本轮生涯规划仍然保留，可以稍后再次结束并重试。",
                     -1
                 );
                 return 0;
@@ -3812,16 +3813,16 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             }
 
             ShowSpeechBubble(
-                L"本轮咨询已结束，PDF 报告已保存到：\n" + reportResult->path,
+                L"本轮生涯规划已结束，PDF 报告已保存到：\n" + reportResult->path,
                 -1
             );
             const std::wstring message =
                 L"报告已保存到：\n" + reportResult->path +
-                L"\n\n下次倾诉会开始新一轮咨询。\n\n是否打开报告所在文件夹？";
+                L"\n\n下次对话会开始新一轮生涯规划。\n\n是否打开报告所在文件夹？";
             if (MessageBoxW(
                     g_window,
                     message.c_str(),
-                    L"本轮咨询报告已生成",
+                    L"本轮生涯规划报告已生成",
                     MB_YESNO | MB_ICONINFORMATION
                 ) == IDYES) {
                 const std::filesystem::path directory =
@@ -3867,23 +3868,23 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                         g_agentPluginSnapshot = {};
                         g_hasAgentPluginSnapshot = false;
                         g_agentPluginStatusError = event->text.empty()
-                            ? L"暂时无法读取咨询助手的辅助能力状态。"
+                            ? L"暂时无法读取生涯规划助手的辅助能力状态。"
                             : event->text;
                     }
                     RefreshAgentPluginDialog();
                     if (g_agentStartupPurpose == AgentStartupPurpose::ConfigurationApply) {
                         ShowSpeechBubble(
                             event->pluginStatusSucceeded
-                                ? L"咨询助手设置已生效：" + AgentPluginSummary(ReadAgentPluginFlags())
-                                : L"咨询助手设置已保存，但辅助能力状态校验失败：" + g_agentPluginStatusError,
+                                ? L"生涯规划助手设置已生效：" + AgentPluginSummary(ReadAgentPluginFlags())
+                                : L"生涯规划助手设置已保存，但辅助能力状态校验失败：" + g_agentPluginStatusError,
                             10
                         );
                         g_agentStartupPurpose = AgentStartupPurpose::None;
                     } else if (g_agentStartupPurpose == AgentStartupPurpose::ManualRestart) {
                         ShowSpeechBubble(
                             event->pluginStatusSucceeded
-                                ? L"咨询助手已重新启动，辅助能力状态已校验。"
-                                : L"咨询助手已重新启动，但辅助能力状态校验失败：" + g_agentPluginStatusError,
+                                ? L"生涯规划助手已重新启动，辅助能力状态已校验。"
+                                : L"生涯规划助手已重新启动，但辅助能力状态校验失败：" + g_agentPluginStatusError,
                             10
                         );
                         g_agentStartupPurpose = AgentStartupPurpose::None;
@@ -4061,7 +4062,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     g_speechBubbleWindow = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
         kSpeechBubbleClass,
-        L"哈妮丝咨询",
+        L"哈妮丝生涯规划",
         WS_POPUP,
         0,
         0,
