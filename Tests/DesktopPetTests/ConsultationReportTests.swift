@@ -9,6 +9,19 @@ final class ConsultationReportTests: XCTestCase {
         XCTAssertTrue(ConsultationReport.reportSystemPrompt.contains("不得从历史残留"))
     }
 
+    func testReportTemplateIncludesRequiredConsultationSummarySections() {
+        let titles = ConsultationReport.sectionDefinitions.map(\.title)
+        XCTAssertTrue(titles.contains("谈话目标"))
+        XCTAssertTrue(titles.contains("咨询过程主要内容"))
+        XCTAssertTrue(titles.contains("行动计划"))
+        XCTAssertTrue(titles.contains("行动的监督"))
+        XCTAssertTrue(ConsultationReport.reportSystemPrompt.contains("本轮尚未形成具体的行动监督安排"))
+        XCTAssertTrue(ConsultationReport.reportRequest.contains("<<<SUPERVISION>>>"))
+        XCTAssertFalse(titles.contains("风险与待核实信息"))
+        XCTAssertFalse(ConsultationReport.reportRequest.contains("<<<RISK>>>"))
+        XCTAssertFalse(ConsultationReport.reportSystemPrompt.contains("待通过官方或可靠来源核实"))
+    }
+
     func testParsesEveryStandardSectionInFixedOrder() throws {
         let generated = """
         <<<TOPIC>>>
@@ -23,8 +36,8 @@ final class ConsultationReportTests: XCTestCase {
         需要用真实项目体验比较两种方向，而不是只比较专业名称。
         <<<ACTIONS>>>
         两周内各完成一个小型体验项目，并记录投入感和困难。
-        <<<RISK>>>
-        目标院校课程与录取要求仍需通过官方网站核实。
+        <<<SUPERVISION>>>
+        学生每周日自行检查项目进度，两周后根据项目记录复盘并调整方向。
         <<<SUPPORT>>>
         可邀请老师、家长和相关专业在读学生提供反馈。
         """
@@ -63,7 +76,10 @@ final class ConsultationReportTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(pdf.pageCount, 1)
         let text = (0..<pdf.pageCount).compactMap { pdf.page(at: $0)?.string }.joined(separator: "\n")
         XCTAssertTrue(text.contains("哈妮丝生涯规划报告"))
-        XCTAssertTrue(text.contains("生涯议题与所处阶段"))
+        XCTAssertTrue(text.contains("谈话目标"))
+        XCTAssertTrue(text.contains("咨询过程主要内容"))
+        XCTAssertTrue(text.contains("行动计划"))
+        XCTAssertTrue(text.contains("行动的监督"))
         XCTAssertTrue(text.contains("不构成升学、录取、实习或就业保证"))
     }
 }

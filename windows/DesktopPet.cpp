@@ -43,6 +43,13 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"DesktopPetWindowsClass";
 constexpr wchar_t kSpeechBubbleClass[] = L"DesktopPetSpeechBubbleClass";
 constexpr wchar_t kWindowTitle[] = L"哈妮丝";
+constexpr int kSpeechBubbleWidthDip = 480;
+constexpr int kSpeechBubbleMinimumHeightDip = 100;
+constexpr int kSpeechBubbleMaximumHeightDip = 360;
+constexpr int kSpeechBubblePaddingDip = 16;
+constexpr int kSpeechBubbleCornerRadiusDip = 20;
+constexpr int kSpeechBubbleBodyFontPoints = 11;
+constexpr int kSpeechBubbleHeadingFontPoints = 13;
 constexpr wchar_t kDefaultAgentPersona[] =
     L"你是一只名叫“哈妮丝”的长毛职业咨询猫，具有 BCC 全球生涯教练专业认证（Board Certified Coach）和 GCDF 全球职业生涯规划师认证的职业咨询师，也是一名面向学生的生涯规划顾问 AI。你帮助大学生及其他处于职业规划迷茫阶段的人，认识自己、探索专业与职业方向、比较选择，并把模糊想法转化为可执行的生涯行动。你提供的是教育与职业探索支持，不替学生或家长作决定，也不承诺升学、录取、实习或就业结果。\n"
     L"\n"
@@ -97,15 +104,18 @@ constexpr wchar_t kDefaultAgentPersona[] =
     L"- 默认回复保持简洁、自然、有人情味，适合桌面对话气泡；复杂问题仍应准确、清楚、有帮助。";
 constexpr wchar_t kConsultationReportSystemPrompt[] =
     L"你是哈妮丝生涯规划报告整理助手。请基于本轮完整对话生成面向学生的职业与生涯规划记录，不替学生作决定，不承诺升学、录取、实习或就业结果，不推测对话中未出现的事实。"
-    L"使用客观、清晰、尊重学生自主性的简体中文，区分学生自述、分析判断、外部事实与待核实信息；测评结果只能作为探索线索，不能作为定论。"
+    L"使用客观、清晰、尊重学生自主性的简体中文，区分学生自述、分析判断与外部事实；测评结果只能作为探索线索，不能作为定论。"
     L"除非学生在本轮对话中明确自述姓名并要求写入报告，否则不得出现任何学生姓名，统一使用“学生”；不得从历史残留、示例、文件名、设备信息或上下文元数据推断身份。"
-    L"对未明确的信息写“本轮对话中未明确提及”，不要编造。涉及招生政策、院校、专业、行业、岗位、薪资或就业数据时记录来源与时间；本轮未核实时标为“待通过官方或可靠来源核实”。"
-    L"行动计划必须来自学生表达或本轮共同确认的内容；如未形成行动，写“本轮尚未形成具体行动计划”。"
+    L"对未明确的信息写“本轮对话中未明确提及”，不要编造。"
+    L"“谈话目标”概括本轮希望解决的生涯议题、学生所处阶段、决策期限和期望产出；未明确的部分写“本轮对话中未明确提及”。"
+    L"“咨询过程主要内容”概括本轮讨论的关键问题、学生提供的重要信息、采用的分析或比较方法及共同形成的认识，不要逐句复述对话。"
+    L"“行动计划”必须来自学生表达或本轮共同确认的内容，并尽量写明具体行动、完成时间、所需支持和可检查的产出；如未形成行动，写“本轮尚未形成具体行动计划”。"
+    L"“行动的监督”记录本轮共同确认的监督人或自我监督方式、检查频率或复盘时间、完成标准及未完成时如何调整。不得擅自指定家长、老师或其他人监督；如未形成监督安排，写“本轮尚未形成具体的行动监督安排”。"
     L"如出现自伤、自杀、伤人或其他紧急危险，只客观记录已出现的信号，并建议立即联系当地急救、危机干预资源、学校心理老师、专业人员或可信赖的现实支持者。"
     L"不写寒暄，不使用 Markdown 标题，不输出代码围栏。";
 constexpr wchar_t kConsultationReportRequest[] =
     L"请整理本轮生涯规划报告。必须严格按以下 8 个标记和顺序输出，每个标记单独占一行，标记之间填写对应内容，不得增删或改写标记：\n"
-    L"<<<TOPIC>>>\n<<<SUMMARY>>>\n<<<NEEDS>>>\n<<<RESOURCES>>>\n<<<INSIGHTS>>>\n<<<ACTIONS>>>\n<<<RISK>>>\n<<<SUPPORT>>>";
+    L"<<<TOPIC>>>\n<<<SUMMARY>>>\n<<<NEEDS>>>\n<<<RESOURCES>>>\n<<<INSIGHTS>>>\n<<<ACTIONS>>>\n<<<SUPERVISION>>>\n<<<SUPPORT>>>";
 constexpr UINT kTrayCallback = WM_APP + 1;
 constexpr UINT kDeepSeekResult = WM_APP + 2;
 constexpr UINT kAgentEvent = WM_APP + 3;
@@ -291,6 +301,8 @@ std::vector<ChatMessage> g_consultationHistory;
 std::wstring g_speechBubbleText;
 MarkdownDocument g_speechBubbleDocument;
 double g_speechBubbleRemaining = 0;
+LONG g_requestedSpeechContentHeight = 0;
+bool g_capturingSpeechResizeRequest = false;
 bool g_requestInFlight = false;
 bool g_agentAllowsAllSafeOperations = false;
 std::unique_ptr<desktop_pet::AgentRuntime> g_agentRuntime;
@@ -324,6 +336,8 @@ std::chrono::steady_clock::time_point g_lastTick = std::chrono::steady_clock::no
 RECT WorkAreaForWindow();
 void StartDeepSeekChat();
 void ShowSpeechBubble(const std::wstring& text, double durationSeconds);
+void LayoutSpeechBubble();
+void PositionSpeechBubble();
 void HandleDroppedFiles(const std::vector<std::wstring>& paths);
 void RenderPet();
 void RefreshAgentPluginDialog();
@@ -1304,13 +1318,13 @@ bool ParseConsultationReport(
     std::wstring& error
 ) {
     static const std::array<std::pair<const wchar_t*, const wchar_t*>, 8> definitions{{
-        {L"TOPIC", L"生涯议题与所处阶段"},
-        {L"SUMMARY", L"学生现状与现实约束"},
+        {L"TOPIC", L"谈话目标"},
+        {L"SUMMARY", L"咨询过程主要内容"},
         {L"NEEDS", L"兴趣、优势与价值偏好"},
         {L"RESOURCES", L"教育与职业方向"},
         {L"INSIGHTS", L"选项比较与判断依据"},
-        {L"ACTIONS", L"行动计划与复盘节点"},
-        {L"RISK", L"风险与待核实信息"},
+        {L"ACTIONS", L"行动计划"},
+        {L"SUPERVISION", L"行动的监督"},
         {L"SUPPORT", L"支持资源与下一步"}
     }};
     sections.clear();
@@ -2030,6 +2044,15 @@ RECT WorkAreaForWindow() {
     return result;
 }
 
+UINT WindowDpiOrDefault(HWND window) {
+    const UINT dpi = window ? GetDpiForWindow(window) : 0;
+    return dpi == 0 ? USER_DEFAULT_SCREEN_DPI : dpi;
+}
+
+int DipToPixels(int value, UINT dpi) {
+    return MulDiv(value, static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI);
+}
+
 void AppendMarkdownText(MarkdownDocument& document, const std::wstring& text, unsigned int style) {
     if (text.empty()) {
         return;
@@ -2044,11 +2067,33 @@ void AppendMarkdownText(MarkdownDocument& document, const std::wstring& text, un
     }
 }
 
+bool IsMarkdownEscapable(wchar_t character) {
+    return (character >= L'!' && character <= L'/') ||
+        (character >= L':' && character <= L'@') ||
+        (character >= L'[' && character <= L'`') ||
+        (character >= L'{' && character <= L'~');
+}
+
+bool IsWindowsPathStart(const std::wstring& line, size_t index) {
+    const bool drivePath = index + 2 < line.size() &&
+        std::iswalpha(line[index]) && line[index + 1] == L':' && line[index + 2] == L'\\';
+    const bool networkPath = index + 2 < line.size() &&
+        line[index] == L'\\' && line[index + 1] == L'\\' &&
+        !std::iswspace(line[index + 2]);
+    return drivePath || networkPath;
+}
+
 void AppendMarkdownInline(MarkdownDocument& document, const std::wstring& line, unsigned int inheritedStyle) {
     unsigned int style = inheritedStyle;
     size_t index = 0;
     while (index < line.size()) {
-        if (line[index] == L'\\' && index + 1 < line.size()) {
+        if ((style & MarkdownCode) == 0 && IsWindowsPathStart(line, index)) {
+            AppendMarkdownText(document, line.substr(index), style);
+            break;
+        }
+
+        if ((style & MarkdownCode) == 0 && line[index] == L'\\' && index + 1 < line.size() &&
+            IsMarkdownEscapable(line[index + 1])) {
             AppendMarkdownText(document, line.substr(index + 1, 1), style);
             index += 2;
             continue;
@@ -2164,9 +2209,9 @@ void ApplyMarkdownToSpeechControl(const MarkdownDocument& document) {
     base.dwMask = CFM_FACE | CFM_SIZE | CFM_COLOR | CFM_BOLD | CFM_ITALIC |
         CFM_UNDERLINE | CFM_STRIKEOUT | CFM_BACKCOLOR;
     base.dwEffects = 0;
-    base.yHeight = 300;
+    base.yHeight = kSpeechBubbleBodyFontPoints * 20;
     base.crTextColor = RGB(35, 35, 35);
-    base.crBackColor = RGB(250, 250, 250);
+    base.crBackColor = RGB(248, 250, 252);
     wcscpy_s(base.szFaceName, L"Microsoft YaHei UI");
     SendMessageW(g_speechTextControl, EM_SETCHARFORMAT, SCF_SELECTION, reinterpret_cast<LPARAM>(&base));
 
@@ -2194,7 +2239,7 @@ void ApplyMarkdownToSpeechControl(const MarkdownDocument& document) {
         if ((run.style & MarkdownHeading) != 0) {
             format.dwMask |= CFM_BOLD | CFM_SIZE;
             format.dwEffects |= CFE_BOLD;
-            format.yHeight = 360;
+            format.yHeight = kSpeechBubbleHeadingFontPoints * 20;
         }
         if ((run.style & MarkdownCode) != 0) {
             format.dwMask |= CFM_FACE | CFM_BACKCOLOR;
@@ -2240,28 +2285,47 @@ LRESULT CALLBACK SpeechBubbleProcedure(HWND window, UINT message, WPARAM wParam,
                     nullptr
                 );
                 if (g_speechTextControl) {
-                    SendMessageW(g_speechTextControl, EM_SETBKGNDCOLOR, 0, RGB(250, 250, 250));
+                    SendMessageW(g_speechTextControl, EM_SETBKGNDCOLOR, 0, RGB(248, 250, 252));
                     SendMessageW(
                         g_speechTextControl,
                         EM_SETMARGINS,
                         EC_LEFTMARGIN | EC_RIGHTMARGIN,
                         MAKELPARAM(2, 2)
                     );
+                    const LRESULT eventMask = SendMessageW(g_speechTextControl, EM_GETEVENTMASK, 0, 0);
+                    SendMessageW(
+                        g_speechTextControl,
+                        EM_SETEVENTMASK,
+                        0,
+                        eventMask | ENM_REQUESTRESIZE
+                    );
                 }
             }
             return 0;
         case WM_SIZE:
             if (g_speechTextControl) {
+                const int padding = DipToPixels(kSpeechBubblePaddingDip, WindowDpiOrDefault(window));
                 MoveWindow(
                     g_speechTextControl,
-                    13,
-                    10,
-                    std::max(1, LOWORD(lParam) - 26),
-                    std::max(1, HIWORD(lParam) - 20),
+                    padding,
+                    padding,
+                    std::max(1, LOWORD(lParam) - padding * 2),
+                    std::max(1, HIWORD(lParam) - padding * 2),
                     TRUE
                 );
             }
             return 0;
+        case WM_NOTIFY: {
+            const auto* header = reinterpret_cast<const NMHDR*>(lParam);
+            if (g_capturingSpeechResizeRequest && header &&
+                header->hwndFrom == g_speechTextControl && header->code == EN_REQUESTRESIZE) {
+                const auto* request = reinterpret_cast<const REQRESIZE*>(lParam);
+                g_requestedSpeechContentHeight =
+                    std::max<LONG>(1, request->rc.bottom - request->rc.top);
+                return 0;
+            }
+            break;
+        }
         case WM_PAINT: {
             PAINTSTRUCT paint{};
             HDC dc = BeginPaint(window, &paint);
@@ -2269,11 +2333,13 @@ LRESULT CALLBACK SpeechBubbleProcedure(HWND window, UINT message, WPARAM wParam,
             GetClientRect(window, &bounds);
             SetBkMode(dc, TRANSPARENT);
 
-            HBRUSH background = CreateSolidBrush(RGB(250, 250, 250));
-            HPEN border = CreatePen(PS_SOLID, 1, RGB(175, 175, 175));
+            const UINT dpi = WindowDpiOrDefault(window);
+            const int cornerRadius = DipToPixels(kSpeechBubbleCornerRadiusDip, dpi);
+            HBRUSH background = CreateSolidBrush(RGB(248, 250, 252));
+            HPEN border = CreatePen(PS_SOLID, 1, RGB(205, 213, 222));
             HGDIOBJ oldBrush = SelectObject(dc, background);
             HGDIOBJ oldPen = SelectObject(dc, border);
-            RoundRect(dc, 0, 0, bounds.right, bounds.bottom, 28, 28);
+            RoundRect(dc, 0, 0, bounds.right, bounds.bottom, cornerRadius, cornerRadius);
             SelectObject(dc, oldBrush);
             SelectObject(dc, oldPen);
             DeleteObject(background);
@@ -2281,13 +2347,15 @@ LRESULT CALLBACK SpeechBubbleProcedure(HWND window, UINT message, WPARAM wParam,
 
             if (!g_speechTextControl) {
                 HFONT font = CreateFontW(
-                    -18, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
+                    -MulDiv(kSpeechBubbleBodyFontPoints, static_cast<int>(dpi), 72),
+                    0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                     CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI"
                 );
                 HGDIOBJ oldFont = SelectObject(dc, font);
                 SetTextColor(dc, RGB(35, 35, 35));
-                RECT textBounds{16, 13, bounds.right - 16, bounds.bottom - 12};
+                const int padding = DipToPixels(kSpeechBubblePaddingDip, dpi);
+                RECT textBounds{padding, padding, bounds.right - padding, bounds.bottom - padding};
                 DrawTextW(
                     dc,
                     g_speechBubbleText.c_str(),
@@ -2299,6 +2367,21 @@ LRESULT CALLBACK SpeechBubbleProcedure(HWND window, UINT message, WPARAM wParam,
                 DeleteObject(font);
             }
             EndPaint(window, &paint);
+            return 0;
+        }
+        case WM_DPICHANGED: {
+            const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+            SetWindowPos(
+                window,
+                HWND_TOPMOST,
+                suggested->left,
+                suggested->top,
+                suggested->right - suggested->left,
+                suggested->bottom - suggested->top,
+                SWP_NOACTIVATE
+            );
+            LayoutSpeechBubble();
+            PositionSpeechBubble();
             return 0;
         }
         case WM_LBUTTONUP:
@@ -2327,32 +2410,40 @@ void PositionSpeechBubble() {
     RECT work = WorkAreaForWindow();
     int width = bubble.right - bubble.left;
     int height = bubble.bottom - bubble.top;
+    const UINT dpi = WindowDpiOrDefault(g_speechBubbleWindow);
+    const int edgeMargin = DipToPixels(8, dpi);
+    const int petGap = DipToPixels(10, dpi);
     int x = (petBounds.left + petBounds.right - width) / 2;
-    int y = petBounds.top - height - 10;
-    x = std::clamp(x, static_cast<int>(work.left + 8), static_cast<int>(work.right - width - 8));
-    if (y < work.top + 8) {
-        y = petBounds.bottom + 10;
+    int y = petBounds.top - height - petGap;
+    const int minimumX = work.left + edgeMargin;
+    const int maximumX = std::max(
+        minimumX,
+        static_cast<int>(work.right) - width - edgeMargin
+    );
+    const int minimumY = work.top + edgeMargin;
+    const int maximumY = std::max(
+        minimumY,
+        static_cast<int>(work.bottom) - height - edgeMargin
+    );
+    x = std::clamp(x, minimumX, maximumX);
+    if (y < minimumY) {
+        y = petBounds.bottom + petGap;
     }
+    y = std::clamp(y, minimumY, maximumY);
     SetWindowPos(g_speechBubbleWindow, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
-void ShowSpeechBubble(const std::wstring& text, double durationSeconds) {
-    if (!g_speechBubbleWindow) {
-        return;
-    }
-    g_speechBubbleDocument = ParseMarkdown(text);
-    g_speechBubbleText = g_speechBubbleDocument.text;
-    g_speechBubbleRemaining = durationSeconds;
-    ApplyMarkdownToSpeechControl(g_speechBubbleDocument);
-
+int MeasurePlainSpeechTextHeight(int contentWidth, UINT dpi) {
     HDC dc = GetDC(g_speechBubbleWindow);
+    if (!dc) return DipToPixels(kSpeechBubbleMinimumHeightDip, dpi);
     HFONT font = CreateFontW(
-        -18, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
+        -MulDiv(kSpeechBubbleBodyFontPoints, static_cast<int>(dpi), 72),
+        0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI"
     );
     HGDIOBJ oldFont = SelectObject(dc, font);
-    RECT measured{0, 0, 328, 0};
+    RECT measured{0, 0, contentWidth, 0};
     DrawTextW(
         dc,
         g_speechBubbleText.c_str(),
@@ -2363,13 +2454,120 @@ void ShowSpeechBubble(const std::wstring& text, double durationSeconds) {
     SelectObject(dc, oldFont);
     DeleteObject(font);
     ReleaseDC(g_speechBubbleWindow, dc);
+    return std::max(1L, measured.bottom - measured.top);
+}
 
-    int height = std::clamp(measured.bottom + 28, 82L, 260L);
-    SetWindowPos(g_speechBubbleWindow, HWND_TOPMOST, 0, 0, 360, height, SWP_NOMOVE | SWP_NOACTIVATE);
-    SetWindowRgn(g_speechBubbleWindow, CreateRoundRectRgn(0, 0, 361, height + 1, 28, 28), TRUE);
+void LayoutSpeechBubble() {
+    if (!g_speechBubbleWindow) return;
+
+    const UINT dpi = WindowDpiOrDefault(g_speechBubbleWindow);
+    const int padding = DipToPixels(kSpeechBubblePaddingDip, dpi);
+    const int edgeMargin = DipToPixels(8, dpi);
+    const RECT work = WorkAreaForWindow();
+    const int availableWidth = std::max(1L, work.right - work.left - edgeMargin * 2);
+    const int availableHeight = std::max(1L, work.bottom - work.top - edgeMargin * 2);
+    const int bubbleWidth = std::min(DipToPixels(kSpeechBubbleWidthDip, dpi), availableWidth);
+    const int maximumHeight = std::min(
+        DipToPixels(kSpeechBubbleMaximumHeightDip, dpi),
+        availableHeight
+    );
+    const int minimumHeight = std::min(
+        DipToPixels(kSpeechBubbleMinimumHeightDip, dpi),
+        maximumHeight
+    );
+    const int contentWidth = std::max(1, bubbleWidth - padding * 2);
+
+    SetWindowPos(
+        g_speechBubbleWindow,
+        HWND_TOPMOST,
+        0,
+        0,
+        bubbleWidth,
+        maximumHeight,
+        SWP_NOMOVE | SWP_NOACTIVATE
+    );
+
+    int contentHeight = 0;
+    if (g_speechTextControl) {
+        ShowScrollBar(g_speechTextControl, SB_VERT, FALSE);
+        MoveWindow(
+            g_speechTextControl,
+            padding,
+            padding,
+            contentWidth,
+            std::max(1, maximumHeight - padding * 2),
+            FALSE
+        );
+        g_requestedSpeechContentHeight = 0;
+        g_capturingSpeechResizeRequest = true;
+        SendMessageW(g_speechTextControl, EM_REQUESTRESIZE, 0, 0);
+        g_capturingSpeechResizeRequest = false;
+        contentHeight = static_cast<int>(g_requestedSpeechContentHeight);
+    }
+    if (contentHeight <= 0) {
+        contentHeight = MeasurePlainSpeechTextHeight(contentWidth, dpi);
+    }
+
+    const int desiredHeight = contentHeight + padding * 2;
+    const int bubbleHeight = std::clamp(desiredHeight, minimumHeight, maximumHeight);
+    const bool needsScrollbar = desiredHeight > maximumHeight;
+    if (g_speechTextControl) {
+        ShowScrollBar(g_speechTextControl, SB_VERT, needsScrollbar ? TRUE : FALSE);
+    }
+
+    SetWindowPos(
+        g_speechBubbleWindow,
+        HWND_TOPMOST,
+        0,
+        0,
+        bubbleWidth,
+        bubbleHeight,
+        SWP_NOMOVE | SWP_NOACTIVATE
+    );
+    const int cornerRadius = DipToPixels(kSpeechBubbleCornerRadiusDip, dpi);
+    SetWindowRgn(
+        g_speechBubbleWindow,
+        CreateRoundRectRgn(0, 0, bubbleWidth + 1, bubbleHeight + 1, cornerRadius, cornerRadius),
+        TRUE
+    );
+    InvalidateRect(g_speechBubbleWindow, nullptr, TRUE);
+}
+
+void ShowSpeechBubble(const std::wstring& text, double durationSeconds) {
+    if (!g_speechBubbleWindow) {
+        return;
+    }
+    g_speechBubbleDocument = ParseMarkdown(text);
+    g_speechBubbleText = g_speechBubbleDocument.text;
+    g_speechBubbleRemaining = durationSeconds;
+    ApplyMarkdownToSpeechControl(g_speechBubbleDocument);
+    LayoutSpeechBubble();
     ShowWindow(g_speechBubbleWindow, SW_SHOWNOACTIVATE);
     PositionSpeechBubble();
     InvalidateRect(g_speechBubbleWindow, nullptr, TRUE);
+}
+
+bool RevealFileInExplorer(const std::wstring& filePath) {
+    PIDLIST_ABSOLUTE item = nullptr;
+    if (SUCCEEDED(SHParseDisplayName(filePath.c_str(), nullptr, &item, 0, nullptr)) && item) {
+        const HRESULT selectResult = SHOpenFolderAndSelectItems(item, 0, nullptr, 0);
+        CoTaskMemFree(item);
+        if (SUCCEEDED(selectResult)) return true;
+    } else if (item) {
+        CoTaskMemFree(item);
+    }
+
+    const std::filesystem::path directory = std::filesystem::path(filePath).parent_path();
+    if (directory.empty()) return false;
+    const HINSTANCE openResult = ShellExecuteW(
+        nullptr,
+        L"open",
+        directory.c_str(),
+        nullptr,
+        nullptr,
+        SW_SHOWNORMAL
+    );
+    return reinterpret_cast<INT_PTR>(openResult) > 32;
 }
 
 void StartConsultationReportGeneration() {
@@ -3384,7 +3582,7 @@ void HandleMenuCommand(UINT command) {
                 EndActiveFileAnalysisSession();
                 SaveAgentWorkspace(workspace);
                 CleanupExpiredFileAnalysisSessions(workspace);
-                ShowSpeechBubble(L"生涯资料目录已切换为：" + workspace, 10);
+                ShowSpeechBubble(L"生涯资料目录已切换为：\n`" + workspace + L"`", 10);
             }
             break;
         }
@@ -3844,21 +4042,29 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             }
 
             ShowSpeechBubble(
-                L"本轮生涯规划已结束，PDF 报告已保存到：\n" + reportResult->path,
+                L"本轮生涯规划已结束，PDF 报告已保存到：\n`" + reportResult->path + L"`",
                 -1
             );
             const std::wstring message =
                 L"报告已保存到：\n" + reportResult->path +
                 L"\n\n下次对话会开始新一轮生涯规划。\n\n是否打开报告所在文件夹？";
             if (MessageBoxW(
-                    g_window,
+                    nullptr,
                     message.c_str(),
                     L"本轮生涯规划报告已生成",
-                    MB_YESNO | MB_ICONINFORMATION
+                    MB_YESNO | MB_ICONINFORMATION | MB_TASKMODAL | MB_SETFOREGROUND | MB_TOPMOST
                 ) == IDYES) {
-                const std::filesystem::path directory =
-                    std::filesystem::path(reportResult->path).parent_path();
-                ShellExecuteW(g_window, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                if (!RevealFileInExplorer(reportResult->path)) {
+                    const std::wstring errorMessage =
+                        L"无法自动打开报告所在文件夹。报告已经保存，请手动前往：\n" +
+                        reportResult->path;
+                    MessageBoxW(
+                        nullptr,
+                        errorMessage.c_str(),
+                        L"无法打开报告位置",
+                        MB_OK | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND | MB_TOPMOST
+                    );
+                }
             }
             return 0;
         }
@@ -4097,8 +4303,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         WS_POPUP,
         0,
         0,
-        360,
-        120,
+        kSpeechBubbleWidthDip,
+        kSpeechBubbleMinimumHeightDip,
         g_window,
         nullptr,
         instance,
