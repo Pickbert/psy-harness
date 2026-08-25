@@ -284,7 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "哈妮丝"
-        alert.informativeText = "一只会陪学生探索专业、职业与成长路径，也会散步和打盹的职业咨询猫。\n\n你可以和哈妮丝讨论选科、选专业、升学、实习、求职和长期生涯方向；她会帮助你认识自己、比较选项并制定行动计划，但不会替你作决定或承诺结果。\n\n拖动她可以改变位置，单击她会获得回应。"
+        alert.informativeText = "一只会陪学生探索专业、职业与成长路径，也会散步和打盹的职业咨询猫。\n\n你可以和哈妮丝讨论选科、选专业、升学、实习、求职和长期生涯方向；她会帮助你认识自己、比较选项并制定行动计划，但不会替你作决定或承诺结果。\n\n拖动她可以改变位置，单击她会获得回应。\n\n作者：pry"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好呀")
         alert.runModal()

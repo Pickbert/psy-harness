@@ -58,6 +58,37 @@ final class AgentPersonaSettingsTests: XCTestCase {
         XCTAssertEqual(prompt.components(separatedBy: "名叫“哈妮丝”的长毛职业咨询猫").count - 1, 1)
     }
 
+    func testWindowsPersonaExactlyMatchesMacOSPersona() throws {
+        let repositoryURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let windowsSource = try String(
+            contentsOf: repositoryURL.appendingPathComponent("windows/DesktopPet.cpp"),
+            encoding: .utf8
+        )
+        let startMarker = "constexpr wchar_t kDefaultAgentPersona[] =\n"
+        let endMarker = ";\nconstexpr wchar_t kConsultationReportSystemPrompt[]"
+        let start = try XCTUnwrap(windowsSource.range(of: startMarker)?.upperBound)
+        let end = try XCTUnwrap(windowsSource.range(of: endMarker, range: start..<windowsSource.endIndex)?.lowerBound)
+        let windowsPersonaDeclaration = String(windowsSource[start..<end])
+        let expectedDeclaration = AgentPersona.defaultText
+            .components(separatedBy: "\n")
+            .enumerated()
+            .map { index, line in
+                let escaped = line
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "\"", with: "\\\"")
+                let newline = index < AgentPersona.defaultText.components(separatedBy: "\n").count - 1
+                    ? "\\n"
+                    : ""
+                return "    L\"\(escaped)\(newline)\""
+            }
+            .joined(separator: "\n")
+
+        XCTAssertEqual(windowsPersonaDeclaration, expectedDeclaration)
+    }
+
     func testDirectChatSystemMessageUsesConfiguredPersona() {
         let message = DeepSeekClient.systemMessage(persona: "自定义猫咪人设")
 
