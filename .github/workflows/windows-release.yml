@@ -178,15 +178,107 @@ jobs:
             build/DesktopPet-Windows-v${{ env.APP_VERSION }}-Agent-x64-SHA256SUMS.txt
           if-no-files-found: error
 
+  build-macos-agent:
+    if: ${{ github.ref_type == 'tag' }}
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24.13.1
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.1
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Verify release version
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < windows/VERSION)"
+          if [[ "${{ github.ref_name }}" != "v$version" ]]; then
+            echo "Git tag ${{ github.ref_name }} does not match windows/VERSION ($version)." >&2
+            exit 1
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build bundled Agent runtime
+        env:
+          COREPACK_NPM_REGISTRY: https://registry.npmjs.org
+          npm_config_registry: https://registry.npmjs.org
+        run: ./scripts/build-agent-runtime.sh
+
+      - name: Run Swift tests
+        run: swift test --disable-sandbox --jobs 1
+
+      - name: Build signed application bundle
+        env:
+          DESKTOPPET_REQUIRE_AGENT_RUNTIME: "1"
+          DESKTOPPET_SWIFT_JOBS: "1"
+        run: ./scripts/build-app.sh release
+
+      - name: Verify and package macOS application
+        shell: bash
+        run: |
+          app="build/DesktopPet.app"
+          base="PsyPet-macOS-v$APP_VERSION-Agent-arm64"
+          archive="build/$base.zip"
+          checksums="build/$base-SHA256SUMS.txt"
+          test -x "$app/Contents/MacOS/DesktopPet"
+          test -x "$app/Contents/Helpers/DesktopPetAgent"
+          test -x "$app/Contents/Helpers/DesktopPetAgent-spawn-helper"
+          file "$app/Contents/MacOS/DesktopPet" | grep -q arm64
+          file "$app/Contents/Helpers/DesktopPetAgent" | grep -q arm64
+          codesign --verify --deep --strict "$app"
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")" = "$APP_VERSION"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$archive"
+          shasum -a 256 "$archive" | sed 's#  build/#  #' > "$checksums"
+          unzip -t "$archive"
+
+      - name: Smoke-test packaged macOS Agent
+        shell: bash
+        run: |
+          extract="$RUNNER_TEMP/psypet-macos-release-smoke"
+          ditto -x -k "build/PsyPet-macOS-v$APP_VERSION-Agent-arm64.zip" "$extract"
+          codesign --verify --deep --strict "$extract/DesktopPet.app"
+          node scripts/windows-agent-smoke.mjs \
+            "$extract/DesktopPet.app/Contents" \
+            "$RUNNER_TEMP/psypet-macos-agent-workspace"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PsyPet-macOS-v${{ env.APP_VERSION }}-Agent-arm64
+          retention-days: 14
+          path: |
+            build/PsyPet-macOS-v${{ env.APP_VERSION }}-Agent-arm64.zip
+            build/PsyPet-macOS-v${{ env.APP_VERSION }}-Agent-arm64-SHA256SUMS.txt
+          if-no-files-found: error
+
+  publish-release:
+    if: ${{ github.ref_type == 'tag' }}
+    needs:
+      - build-windows-agent
+      - build-macos-agent
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
       - name: Publish GitHub Release
-        if: ${{ github.ref_type == 'tag' }}
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $base = "DesktopPet-Windows-v$env:APP_VERSION-Agent-x64"
-          gh release create "${{ github.ref_name }}" `
-            "build\$base-Setup.exe" `
-            "build\$base-Portable.zip" `
-            "build\$base-SHA256SUMS.txt" `
-            --verify-tag --generate-notes --title "哈妮丝 v$env:APP_VERSION"
+          ls -la release-assets
+          gh release create "${{ github.ref_name }}" \
+            release-assets/* \
+            --verify-tag \
+            --generate-notes \
+            --title "哈妮丝 ${{ github.ref_name }}"

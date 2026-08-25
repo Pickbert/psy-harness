@@ -10,21 +10,29 @@ if (runtimeArgument === undefined || workspaceArgument === undefined) {
 
 const runtimeDirectory = resolve(runtimeArgument)
 const workspace = resolve(workspaceArgument)
-const nodePath = join(runtimeDirectory, 'node.exe')
-const entryPath = join(
-  runtimeDirectory,
-  'node',
-  'node_modules',
-  '@deepseek-ai',
-  'dsh-sdk-jsonrpc-demo',
-  'lib',
-  'packaged-bin.js',
-)
-const configPath = join(runtimeDirectory, 'DesktopPetAgent.cordis.yml')
+const windowsNodePath = join(runtimeDirectory, 'node.exe')
+const isWindowsPackage = existsSync(windowsNodePath)
+const executablePath = isWindowsPackage
+  ? windowsNodePath
+  : join(runtimeDirectory, 'Helpers', 'DesktopPetAgent')
+const executableArguments = isWindowsPackage
+  ? [join(
+      runtimeDirectory,
+      'node',
+      'node_modules',
+      '@deepseek-ai',
+      'dsh-sdk-jsonrpc-demo',
+      'lib',
+      'packaged-bin.js',
+    )]
+  : []
+const configPath = isWindowsPackage
+  ? join(runtimeDirectory, 'DesktopPetAgent.cordis.yml')
+  : join(runtimeDirectory, 'Resources', 'DesktopPetAgent.cordis.yml')
 const sessionRoot = join(workspace, 'sessions')
 const skillRoot = join(workspace, '.desktop-pet', 'skills')
 
-for (const requiredPath of [nodePath, entryPath, configPath]) {
+for (const requiredPath of [executablePath, ...executableArguments, configPath]) {
   if (!existsSync(requiredPath)) throw new Error(`missing packaged Agent file: ${requiredPath}`)
 }
 mkdirSync(sessionRoot, { recursive: true })
@@ -87,7 +95,7 @@ const environment = {
   DSH_PLUGIN_WEB_SEARCH: '0',
 }
 
-const child = spawn(nodePath, [entryPath], {
+const child = spawn(executablePath, executableArguments, {
   cwd: workspace,
   env: environment,
   stdio: ['pipe', 'pipe', 'pipe'],
@@ -146,7 +154,7 @@ function finishWhenStopped() {
   settled = true
   clearTimeout(timeout)
   mockServer.close()
-  process.stdout.write('Packaged Windows Agent prompt smoke test passed without a real API key.\n')
+  process.stdout.write('Packaged Agent prompt smoke test passed without a real API key.\n')
 }
 
 function stopChildProcessTree() {

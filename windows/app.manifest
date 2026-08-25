@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="0.7.1.0" processorArchitecture="amd64" name="DesktopPet.Windows" type="win32"/>
+  <assemblyIdentity version="0.7.2.0" processorArchitecture="amd64" name="DesktopPet.Windows" type="win32"/>
   <description>哈妮丝</description>
   <dependency>
     <dependentAssembly>
