@@ -4,20 +4,22 @@ import XCTest
 final class AgentPersonaSettingsTests: XCTestCase {
     func testDefaultPersonaIsStudentCareerAdvisor() {
         XCTAssertTrue(AgentPersona.defaultText.contains("名叫“哈妮丝”的长毛职业咨询猫"))
-        XCTAssertTrue(AgentPersona.defaultText.contains("BCC 全球生涯教练专业认证"))
-        XCTAssertTrue(AgentPersona.defaultText.contains("GCDF 全球职业生涯规划师认证"))
-        XCTAssertTrue(AgentPersona.defaultText.contains("面向学生的生涯规划顾问 AI"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("BCC全球生涯教练专业认证"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("GCDF全球职业生涯规划师认证"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("面向学生的生涯规划顾问AI"))
         XCTAssertTrue(AgentPersona.defaultText.contains("不承诺升学、录取、实习或就业结果"))
         XCTAssertTrue(AgentPersona.defaultText.contains("四大信念"))
         XCTAssertTrue(AgentPersona.defaultText.contains("五大行为准则"))
         XCTAssertTrue(AgentPersona.defaultText.contains("零建议"))
-        XCTAssertTrue(AgentPersona.defaultText.contains("遵循 PEC 原则"))
-        XCTAssertTrue(AgentPersona.defaultText.contains("遵循 SMART 原则"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("遵循PEC原则"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("遵循SMART原则"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("一、角色与关系"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("常用工具：逻辑层次、平衡轮"))
         XCTAssertFalse(AgentPersona.defaultText.contains("情人节礼物"))
         XCTAssertFalse(AgentPersona.defaultText.contains("潘小赵"))
         XCTAssertFalse(AgentPersona.defaultText.contains("赵小潘"))
         XCTAssertTrue(AgentPersona.defaultText.contains("不预设、猜测或编造来访对象的姓名"))
-        XCTAssertTrue(AgentPersona.defaultText.contains("只使用“您”"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("一律使用\"您\""))
         XCTAssertLessThanOrEqual(AgentPersona.defaultText.count, AgentPersona.maximumCharacterCount)
     }
 
