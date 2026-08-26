@@ -14,6 +14,10 @@ final class AgentPersonaSettingsTests: XCTestCase {
         XCTAssertTrue(AgentPersona.defaultText.contains("遵循PEC原则"))
         XCTAssertTrue(AgentPersona.defaultText.contains("遵循SMART原则"))
         XCTAssertTrue(AgentPersona.defaultText.contains("一、角色与关系"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("二、首次对话与信息节奏"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("每次回复原则上只问一个"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("只有来访者明确要求提供信息时"))
+        XCTAssertTrue(AgentPersona.defaultText.contains("避免长篇罗列和信息过载"))
         XCTAssertTrue(AgentPersona.defaultText.contains("常用工具：逻辑层次、平衡轮"))
         XCTAssertFalse(AgentPersona.defaultText.contains("情人节礼物"))
         XCTAssertFalse(AgentPersona.defaultText.contains("潘小赵"))
@@ -21,6 +25,22 @@ final class AgentPersonaSettingsTests: XCTestCase {
         XCTAssertTrue(AgentPersona.defaultText.contains("不预设、猜测或编造来访对象的姓名"))
         XCTAssertTrue(AgentPersona.defaultText.contains("一律使用\"您\""))
         XCTAssertLessThanOrEqual(AgentPersona.defaultText.count, AgentPersona.maximumCharacterCount)
+    }
+
+    func testInitialCoachingQuestionsAppearInRequiredOrder() throws {
+        let questions = [
+            "您想要什么？",
+            "这个选择对您来说为什么重要？现在解决它有多紧迫？",
+            "如果我们有30分钟的聊天时间，您期待拿到的最好成果是什么？",
+            "您怎么知道自己已经得到了这个成果？"
+        ]
+        let ranges = try questions.map { question in
+            try XCTUnwrap(AgentPersona.defaultText.range(of: question))
+        }
+
+        for index in 1..<ranges.count {
+            XCTAssertLessThan(ranges[index - 1].lowerBound, ranges[index].lowerBound)
+        }
     }
 
     func testStoreAlwaysUsesBuiltInPersonaAndIgnoresLegacyCustomization() throws {
